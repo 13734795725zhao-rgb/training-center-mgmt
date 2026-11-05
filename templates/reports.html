@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>报表统计 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/reports.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 核心指标 -->
+    <section class="kpis">
+      <div class="kpi-card">
+        <div class="kpi-value">{{ stu_total }}</div>
+        <div class="kpi-label">在校学生</div>
+        <div class="kpi-sub">本月新增 {{ stu_month }} 人</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">{{ course_active }}<span class="kpi-unit"> / {{ course_total }}</span></div>
+        <div class="kpi-label">开课中课程</div>
+        <div class="kpi-sub">课程总数 {{ course_total }} 门</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">{{ tea_active }}<span class="kpi-unit"> / {{ tea_total }}</span></div>
+        <div class="kpi-label">在职教师</div>
+        <div class="kpi-sub">教师总数 {{ tea_total }} 人</div>
+      </div>
+      <div class="kpi-card kpi-money">
+        <div class="kpi-value">¥{{ '%.2f'|format(pay_total) }}</div>
+        <div class="kpi-label">缴费总收入</div>
+        <div class="kpi-sub">共 {{ pay_count }} 笔</div>
+      </div>
+    </section>
+
+    <!-- Chart.js 图表区 -->
+    <div class="grid-2" style="margin-bottom:24px">
+      <section class="panel">
+        <h2 class="panel-title">学生性别分布</h2>
+        <div style="position:relative;height:240px">
+          <canvas id="genderChart"></canvas>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">缴费方式分布</h2>
+        <div style="position:relative;height:240px">
+          <canvas id="methodChart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- 近6个月缴费趋势 -->
+    <section class="panel" style="margin-bottom:24px">
+      <h2 class="panel-title">近6个月缴费趋势</h2>
+      <div style="position:relative;height:260px">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </section>
+
+    <div class="grid-2">
+      <!-- 学生分析 -->
+      <section class="panel">
+        <h2 class="panel-title">学生分析</h2>
+        <div class="mini-stats">
+          <div class="mini-stat"><b>{{ stu_total }}</b><span>总人数</span></div>
+          <div class="mini-stat ms-male"><b>{{ stu_male }}</b><span>男生</span></div>
+          <div class="mini-stat ms-female"><b>{{ stu_female }}</b><span>女生</span></div>
+          <div class="mini-stat ms-month"><b>{{ stu_month }}</b><span>本月建档</span></div>
+        </div>
+        <h3 class="panel-sub">报读科目分布{% if course_dist %}（Top {{ course_dist|length }}）{% endif %}</h3>
+        {% if course_dist %}
+        <div class="bars">
+          {% set max_c = course_dist[0].c %}
+          {% for item in course_dist %}
+          <div class="bar-row">
+            <span class="bar-label" title="{{ item.k }}">{{ item.k }}</span>
+            <div class="bar-track">
+              <div class="bar-fill bf-student" style="width: {{ (item.c / max_c * 100)|round(1) }}%"></div>
+            </div>
+            <span class="bar-value">{{ item.c }} 人</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="panel-empty">暂无学生数据</p>
+        {% endif %}
+      </section>
+
+      <!-- 缴费分析 -->
+      <section class="panel">
+        <h2 class="panel-title">缴费分析</h2>
+        <div class="mini-stats">
+          <div class="mini-stat"><b>¥{{ '%.0f'|format(pay_total) }}</b><span>累计收入</span></div>
+          <div class="mini-stat ms-month"><b>¥{{ '%.0f'|format(pay_month) }}</b><span>本月（{{ month }}）</span></div>
+          <div class="mini-stat ms-today"><b>¥{{ '%.0f'|format(pay_today) }}</b><span>今日</span></div>
+          <div class="mini-stat"><b>{{ pay_count }}</b><span>笔数</span></div>
+        </div>
+        <h3 class="panel-sub">课程收入排行{% if pay_by_course %}（Top {{ pay_by_course|length }}）{% endif %}</h3>
+        {% if pay_by_course %}
+        <div class="bars">
+          {% set max_s = pay_by_course[0].s if pay_by_course[0].s > 0 else 1 %}
+          {% for item in pay_by_course %}
+          <div class="bar-row">
+            <span class="bar-label" title="{{ item.k }}">{{ item.k }}</span>
+            <div class="bar-track">
+              <div class="bar-fill bf-money" style="width: {{ (item.s / max_s * 100)|round(1) }}%"></div>
+            </div>
+            <span class="bar-value">¥{{ '%.0f'|format(item.s) }} · {{ item.n }}笔</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="panel-empty">暂无缴费数据</p>
+        {% endif %}
+        {% if pay_by_method %}
+        <h3 class="panel-sub">缴费方式分布</h3>
+        <div class="method-chips">
+          {% for item in pay_by_method %}
+          <span class="method-chip">{{ item.k }}：¥{{ '%.0f'|format(item.s) }}（{{ item.n }} 笔）</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </section>
+    </div>
+
+    <!-- 考勤分析 -->
+    <section class="panel">
+      <h2 class="panel-title">考勤分析</h2>
+      <div class="att-cols">
+        <div class="att-block">
+          <h3 class="panel-sub">全部记录（{{ att_total }} 条 · 到课率 {{ att_rate }}%）</h3>
+          {% if att_total %}
+          <div class="bars">
+            {% set att_items = [('出勤', att.present, 'bf-present'), ('迟到', att.late, 'bf-late'), ('请假', att.leave, 'bf-leave'), ('缺勤', att.absent, 'bf-absent')] %}
+            {% set max_a = ([att.present, att.late, att.leave, att.absent]|max) if att_total else 1 %}
+            {% for label, val, cls in att_items %}
+            <div class="bar-row">
+              <span class="bar-label">{{ label }}</span>
+              <div class="bar-track">
+                <div class="bar-fill {{ cls }}" style="width: {{ (val / (max_a if max_a > 0 else 1) * 100)|round(1) }}%"></div>
+              </div>
+              <span class="bar-value">{{ val }} 条</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="panel-empty">暂无考勤数据</p>
+          {% endif %}
+        </div>
+        <div class="att-block">
+          <h3 class="panel-sub">近 30 天（{{ att30_total }} 条 · 到课率 {{ att30_rate }}%）</h3>
+          {% if att30_total %}
+          <div class="bars">
+            {% set att30_items = [('出勤', att30.present, 'bf-present'), ('迟到', att30.late, 'bf-late'), ('请假', att30.leave, 'bf-leave'), ('缺勤', att30.absent, 'bf-absent')] %}
+            {% set max_a30 = ([att30.present, att30.late, att30.leave, att30.absent]|max) %}
+            {% for label, val, cls in att30_items %}
+            <div class="bar-row">
+              <span class="bar-label">{{ label }}</span>
+              <div class="bar-track">
+                <div class="bar-fill {{ cls }}" style="width: {{ (val / (max_a30 if max_a30 > 0 else 1) * 100)|round(1) }}%"></div>
+              </div>
+              <span class="bar-value">{{ val }} 条</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="panel-empty">近 30 天暂无考勤数据</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <p class="refresh-tip">数据为打开页面时的实时快照，<a href="/reports">刷新页面</a>获取最新数据</p>
+  </main>
+
+  <footer class="footer">培训机构管理系统 · 报表统计模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    // 学生性别分布 - 饼图
+    new Chart(document.getElementById("genderChart"), {
+      type: "pie",
+      data: {
+        labels: ["男生", "女生"],
+        datasets: [{
+          data: [{{ stu_male }}, {{ stu_female }}],
+          backgroundColor: ["#3b82f6", "#ec4899"],
+          borderWidth: 2,
+          borderColor: "#fff",
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+      },
+    });
+
+    // 缴费方式分布 - 环形图
+    {% if pay_by_method %}
+    new Chart(document.getElementById("methodChart"), {
+      type: "doughnut",
+      data: {
+        labels: [{% for item in pay_by_method %}"{{ item.k }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+          data: [{% for item in pay_by_method %}{{ '%.0f'|format(item.s) }}{% if not loop.last %},{% endif %}{% endfor %}],
+          backgroundColor: ["#4f46e5", "#16a34a", "#d97706", "#0891b2", "#dc2626", "#8b5cf6", "#f59e0b"],
+          borderWidth: 2,
+          borderColor: "#fff",
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+      },
+    });
+    {% else %}
+    document.getElementById("methodChart").parentElement.innerHTML = '<p class="panel-empty">暂无缴费数据</p>';
+    {% endif %}
+
+    // 近6个月缴费趋势 - 折线图
+    new Chart(document.getElementById("trendChart"), {
+      type: "line",
+      data: {
+        labels: [{% for item in pay_monthly %}"{{ item.m }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+          label: "缴费金额（¥）",
+          data: [{% for item in pay_monthly %}{{ '%.0f'|format(item.s) }}{% if not loop.last %},{% endif %}{% endfor %}],
+          borderColor: "#4f46e5",
+          backgroundColor: "rgba(79,70,229,0.08)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: "#4f46e5",
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: (v) => "¥" + v } },
+        },
+      },
+    });
+
+    // 考勤分布 - 柱状图（高度由 .att-chart 容器统一控制）
+    {% if att_total %}
+    const attChartContainer = document.querySelector(".att-block:first-child .bars");
+    if (attChartContainer) {
+      const attChartWrap = document.createElement("div");
+      attChartWrap.className = "att-chart";
+      const attCanvas = document.createElement("canvas");
+      attChartWrap.appendChild(attCanvas);
+      attChartContainer.parentElement.insertBefore(attChartWrap, attChartContainer);
+      new Chart(attCanvas, {
+        type: "bar",
+        data: {
+          labels: ["出勤", "迟到", "请假", "缺勤"],
+          datasets: [{
+            data: [{{ att.present }}, {{ att.late }}, {{ att.leave }}, {{ att.absent }}],
+            backgroundColor: ["#16a34a", "#d97706", "#3b82f6", "#dc2626"],
+            borderRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    }
+    {% endif %}
+  </script>
+</body>
+</html>

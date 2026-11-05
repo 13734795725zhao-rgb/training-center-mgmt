@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>培训机构管理系统 - 首页</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/home.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+  <main class="container">
+    <!-- 欢迎横幅 + 概况统计 -->
+    <section class="hero">
+      <div class="hero-text">
+        <h1>欢迎使用培训机构管理系统</h1>
+        <p>局域网内部管理平台 · 当前已开放「学生档案」模块</p>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><div class="v">{{ stats.total }}</div><div class="l">在校学生</div></div>
+        <div class="hero-stat"><div class="v">{{ stats.month_new }}</div><div class="l">本月建档</div></div>
+        <div class="hero-stat"><div class="v">{{ stats.male }}</div><div class="l">男生</div></div>
+        <div class="hero-stat"><div class="v">{{ stats.female }}</div><div class="l">女生</div></div>
+      </div>
+    </section>
+
+    <!-- 功能模块 -->
+    <section class="section">
+      <h2 class="section-title">功能模块</h2>
+      <div class="module-grid">
+        <a class="module-card module-active" href="/students">
+          <div class="module-icon">档</div>
+          <div class="module-info">
+            <div class="module-name">学生档案<span class="module-badge">已启用</span></div>
+            <p class="module-desc">学籍档案建立、监护人信息、照片管理与学生简历</p>
+            <div class="module-meta">{{ stats.total }} 名学生 · {{ stats.photos }} 张照片 · {{ stats.attachments }} 份简历资料</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/courses">
+          <div class="module-icon">课</div>
+          <div class="module-info">
+            <div class="module-name">课程管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">课程设置、上课安排与报读情况</p>
+            <div class="module-meta">{{ stats.courses }} 门课程</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/subjects">
+          <div class="module-icon">科</div>
+          <div class="module-info">
+            <div class="module-name">科目管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">维护科目名称与每节课课单价</p>
+            <div class="module-meta">{{ stats.subjects }} 个科目</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/payments">
+          <div class="module-icon">缴</div>
+          <div class="module-info">
+            <div class="module-name">缴费管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">学费收缴记录与收入统计</p>
+            <div class="module-meta">累计收入 ¥{{ '%.0f'|format(stats.payment_total) }} · 本月 ¥{{ '%.0f'|format(stats.payment_month) }}</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/teachers">
+          <div class="module-icon">师</div>
+          <div class="module-info">
+            <div class="module-name">教师管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">教师档案、教学科目与授课情况</p>
+            <div class="module-meta">{{ stats.teachers }} 名教师</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/attendance">
+          <div class="module-icon">勤</div>
+          <div class="module-info">
+            <div class="module-name">考勤管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">学生签到、请假记录与到课率统计</p>
+            <div class="module-meta">{{ stats.attendance }} 条考勤记录</div>
+          </div>
+        </a>
+        <a class="module-card module-active" href="/lessons">
+          <div class="module-icon">时</div>
+          <div class="module-info">
+            <div class="module-name">课时管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">学员课时信息、课时查询与 Excel 导出</p>
+            <div class="module-meta">剩余 {{ stats.lessons_remaining }} 节课时{% if stats.lessons_warn %} · {{ stats.lessons_warn }} 人预警{% endif %}</div>
+          </div>
+        </a>
+        {% if user and can('report.view') %}
+        <a class="module-card module-active" href="/reports">
+          <div class="module-icon">表</div>
+          <div class="module-info">
+            <div class="module-name">报表统计<span class="module-badge">已启用</span></div>
+            <p class="module-desc">学生、课程、缴费与考勤经营数据看板</p>
+            <div class="module-meta">实时数据看板</div>
+          </div>
+        </a>
+        {% endif %}
+        <a class="module-card module-active" href="/refunds">
+          <div class="module-icon">退</div>
+          <div class="module-info">
+            <div class="module-name">退费管理<span class="module-badge">已启用</span></div>
+            <p class="module-desc">退费记录与关联缴费追踪</p>
+            <div class="module-meta">退费流程管理</div>
+          </div>
+        </a>
+        {% if user and can('import.all') %}
+        <a class="module-card module-active" href="/import">
+          <div class="module-icon">导</div>
+          <div class="module-info">
+            <div class="module-name">数据导入<span class="module-badge">已启用</span></div>
+            <p class="module-desc">Excel 批量导入学生档案</p>
+            <div class="module-meta">模板下载 + 批量上传</div>
+          </div>
+        </a>
+        {% endif %}
+        <!-- 系统设置：所有登录角色可见入口，页内功能按权限裁剪（非管理员仅可改密码） -->
+        {% if user %}
+        <a class="module-card module-active" href="/settings">
+          <div class="module-icon">置</div>
+          <div class="module-info">
+            <div class="module-name">系统设置<span class="module-badge">已启用</span></div>
+            <p class="module-desc">用户管理、数据备份与操作日志</p>
+            <div class="module-meta">系统配置中心</div>
+          </div>
+        </a>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 最近建档 -->
+    {% if recent %}
+    <section class="section">
+      <h2 class="section-title">最近建档</h2>
+      <div class="recent-card">
+        <table class="recent-table">
+          <thead>
+            <tr>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>性别</th>
+              <th>报读科目</th>
+              <th>建档时间</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in recent %}
+            <tr>
+              <td class="td-id">{{ s.student_no or s.id }}</td>
+              <td class="td-name">
+                <span class="avatar {{ 'avatar-female' if s.gender == '女' }}">{{ s.name[:1] }}</span>
+                {{ s.name }}
+              </td>
+              <td><span class="gender-tag {{ 'tag-female' if s.gender == '女' else 'tag-male' }}">{{ s.gender }}</span></td>
+              <td>{{ s.course or '—' }}</td>
+              <td class="td-date">{{ (s.created_at or '')[:16] }}</td>
+              <td class="td-actions">
+                <a class="btn-link" href="/students">档案</a>
+                <a class="btn-link" href="/resume/{{ s.id }}" target="_blank">简历</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+  </main>
+
+  <footer class="footer">培训机构管理系统 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+</body>
+</html>

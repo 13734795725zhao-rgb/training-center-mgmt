@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>教师管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/teachers.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 统计卡片 -->
+    <section class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">教师总数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statActive">0</div>
+        <div class="stat-label">在职教师</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statLeft">0</div>
+        <div class="stat-label">离职教师</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statCourses">0</div>
+        <div class="stat-label">授课门次</div>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索工号 / 教师姓名 / 教学科目 / 联系电话..." autocomplete="off">
+      </div>
+      <select id="statusFilter">
+        <option value="">全部状态</option>
+        <option value="在职">在职</option>
+        <option value="离职">离职</option>
+      </select>
+      {% if can('teacher.create') %}
+    <button class="btn btn-primary" id="addBtn" type="button">+ 新建教师档案</button>
+    {% endif %}
+    </section>
+
+    <!-- 教师列表 -->
+    <section class="table-card">
+      <table class="teacher-table">
+        <thead>
+          <tr>
+            <th>工号</th>
+            <th>姓名</th>
+            <th>性别</th>
+            <th>联系电话</th>
+            <th>教学科目</th>
+            <th>职位 / 职称</th>
+            <th>授课门数</th>
+            <th>入职日期</th>
+            <th>状态</th>
+            <th class="th-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <div class="empty-icon">师</div>
+        <div class="empty-title">暂无教师档案</div>
+        <div class="empty-desc">点击右上角「新建教师档案」开始建立</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 新建/编辑弹窗 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新建教师档案</h3>
+        <button class="modal-close" id="modalClose" type="button">&times;</button>
+      </div>
+      <form id="teacherForm">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>姓名 <span class="required">*</span></label>
+            <input type="text" id="f_name" maxlength="30" placeholder="教师姓名">
+          </div>
+          <div class="form-item">
+            <label>性别</label>
+            <select id="f_gender">
+              <option value="男">男</option>
+              <option value="女">女</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>联系电话</label>
+            <input type="tel" id="f_phone" maxlength="20" placeholder="联系电话">
+          </div>
+          <div class="form-item">
+            <label>教学科目</label>
+            <select id="f_subject"></select>
+          </div>
+          <div class="form-item">
+            <label>职位 / 职称</label>
+            <input type="text" id="f_title" maxlength="30" placeholder="如：教学主管 / 高级讲师">
+          </div>
+          <div class="form-item">
+            <label>入职日期</label>
+            <input type="date" id="f_hire_date">
+          </div>
+          <div class="form-item">
+            <label>状态</label>
+            <select id="f_status">
+              <option value="在职">在职</option>
+              <option value="离职">离职</option>
+            </select>
+          </div>
+          <div class="form-item form-item-full">
+            <label>备注</label>
+            <textarea id="f_notes" rows="3" maxlength="300" placeholder="其他信息（选填）"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认 -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3>删除确认</h3>
+        <button class="modal-close" id="confirmClose" type="button">&times;</button>
+      </div>
+      <p class="confirm-text" id="confirmText"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <footer class="footer">培训机构管理系统 · 教师管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let editingId = null;
+    let deletingId = null;
+    let allTeachers = [];
+    let subjectsCache = [];  // 科目选项缓存（教学科目，来自科目管理）
+
+    // 权限标志（服务端下发）：新建 / 修改删除
+    const PERMS = {
+      create: {{ can('teacher.create') | tojson }},
+      write: {{ can('teacher.write') | tojson }},
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadTeachers();
+      loadSubjectOptions();
+
+      if ($('addBtn')) $('addBtn').addEventListener('click', () => openModal(null));
+      $('modalClose').addEventListener('click', closeModal);
+      $('cancelBtn').addEventListener('click', closeModal);
+      $('modalOverlay').addEventListener('click', (e) => {
+        if (e.target === $('modalOverlay')) closeModal();
+      });
+      $('teacherForm').addEventListener('submit', submitForm);
+      $('confirmClose').addEventListener('click', closeConfirm);
+      $('confirmCancel').addEventListener('click', closeConfirm);
+      $('confirmOverlay').addEventListener('click', (e) => {
+        if (e.target === $('confirmOverlay')) closeConfirm();
+      });
+      $('confirmOk').addEventListener('click', doDelete);
+
+      let timer = null;
+      $('searchInput').addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(loadTeachers, 250);
+      });
+      $('statusFilter').addEventListener('change', loadTeachers);
+    });
+
+    async function loadTeachers() {
+      const params = new URLSearchParams({
+        keyword: $('searchInput').value.trim(),
+        status: $('statusFilter').value,
+      });
+      try {
+        const res = await fetch('/api/teachers?' + params);
+        allTeachers = await res.json();
+        renderTable(allTeachers);
+        renderStats(allTeachers);
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function renderStats(list) {
+      let active = 0, left = 0, courses = 0;
+      list.forEach(t => {
+        if (t.status === '在职') active++; else left++;
+        courses += t.course_count || 0;
+      });
+      $('statTotal').textContent = list.length;
+      $('statActive').textContent = active;
+      $('statLeft').textContent = left;
+      $('statCourses').textContent = courses;
+    }
+
+    function renderTable(list) {
+      const tbody = $('tbody');
+      tbody.innerHTML = '';
+      $('emptyState').style.display = list.length ? 'none' : 'flex';
+
+      list.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="td-id">${escapeHtml(t.teacher_no || '')}</td>
+          <td class="td-name">
+            <span class="avatar ${t.gender === '女' ? 'avatar-female' : ''}">${escapeHtml(t.name.slice(0, 1))}</span>
+            ${escapeHtml(t.name)}
+          </td>
+          <td><span class="gender-tag ${t.gender === '女' ? 'tag-female' : 'tag-male'}">${t.gender}</span></td>
+          <td>${escapeHtml(t.phone || '—')}</td>
+          <td>${t.subject ? `<span class="subject-tag">${escapeHtml(t.subject)}</span>` : '—'}</td>
+          <td>${escapeHtml(t.title || '—')}</td>
+          <td>${t.course_count ? `<b class="course-num">${t.course_count} 门</b>` : '—'}</td>
+          <td class="td-date">${t.hire_date || '—'}</td>
+          <td><span class="status-tag ${t.status === '在职' ? 'st-on' : 'st-off'}">${t.status}</span></td>
+          <td class="td-actions">
+            ${PERMS.write ? `<button class="btn-link" data-act="edit" type="button">编辑</button>` : ''}
+            ${PERMS.write ? `<button class="btn-link btn-link-danger" data-act="del" type="button">删除</button>` : ''}
+          </td>`;
+        if (tr.querySelector('[data-act="edit"]')) tr.querySelector('[data-act="edit"]').addEventListener('click', () => openModal(t));
+        if (tr.querySelector('[data-act="del"]')) tr.querySelector('[data-act="del"]').addEventListener('click', () => {
+          deletingId = t.id;
+          $('confirmText').textContent =
+            `确定要删除教师「${t.name}」的档案吗？${t.course_count ? `其名下 ${t.course_count} 门课程的授课教师文字不受影响。` : ''}`;
+          $('confirmOverlay').style.display = 'flex';
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------- 教学科目下拉选项（来自科目管理） ----------
+    async function loadSubjectOptions(selected) {
+      try {
+        const res = await fetch('/api/subjects');
+        subjectsCache = (await res.json()).subjects || [];
+      } catch (err) {
+        showToast('科目列表加载失败', 'error');
+      }
+      renderSubjectOptions(selected);
+    }
+
+    function renderSubjectOptions(selected) {
+      const sel = $('f_subject');
+      const current = selected || sel.value || '';
+      sel.innerHTML = '<option value="">— 未选择科目 —</option>' +
+        subjectsCache.map(s =>
+          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
+        ).join('');
+      // 历史教师的科目不在科目列表中时补充为选项，避免编辑时显示丢失
+      if (current && ![...sel.options].some(o => o.value === current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + '（科目管理中未建档）';
+        sel.appendChild(opt);
+      }
+      sel.value = current;
+    }
+
+    function openModal(teacher) {
+      editingId = teacher ? teacher.id : null;
+      $('modalTitle').textContent = teacher ? '编辑教师档案' : '新建教师档案';
+      const map = {
+        f_name: teacher?.name || '',
+        f_gender: teacher?.gender || '男',
+        f_phone: teacher?.phone || '',
+        f_title: teacher?.title || '',
+        f_hire_date: teacher?.hire_date || '',
+        f_status: teacher?.status || '在职',
+        f_notes: teacher?.notes || '',
+      };
+      for (const [id, val] of Object.entries(map)) $(id).value = val;
+      // 每次打开弹窗时刷新教学科目选项（可能刚在科目管理中新增）
+      loadSubjectOptions(teacher?.subject || '');
+      $('modalOverlay').style.display = 'flex';
+      setTimeout(() => $('f_name').focus(), 50);
+    }
+
+    function closeModal() {
+      $('modalOverlay').style.display = 'none';
+      editingId = null;
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const data = {
+        name: $('f_name').value.trim(),
+        gender: $('f_gender').value,
+        phone: $('f_phone').value.trim(),
+        subject: $('f_subject').value.trim(),
+        title: $('f_title').value.trim(),
+        hire_date: $('f_hire_date').value,
+        status: $('f_status').value,
+        notes: $('f_notes').value.trim(),
+      };
+      if (!data.name) {
+        showToast('请填写教师姓名', 'error');
+        $('f_name').focus();
+        return;
+      }
+      $('saveBtn').disabled = true;
+      try {
+        const url = editingId ? `/api/teachers/${editingId}` : '/api/teachers';
+        const res = await fetch(url, {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const r = await res.json();
+        if (!res.ok) {
+          showToast(r.error || '保存失败', 'error');
+          return;
+        }
+        closeModal();
+        showToast(editingId ? '修改成功' : `创建成功，工号 ${r.teacher_no || ''}`, 'success');
+        loadTeachers();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    function closeConfirm() {
+      $('confirmOverlay').style.display = 'none';
+      deletingId = null;
+    }
+
+    async function doDelete() {
+      if (!deletingId) return;
+      try {
+        const res = await fetch(`/api/teachers/${deletingId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          showToast('删除失败', 'error');
+          return;
+        }
+        closeConfirm();
+        showToast('删除成功', 'success');
+        loadTeachers();
+      } catch (err) {
+        showToast('网络错误，删除失败', 'error');
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

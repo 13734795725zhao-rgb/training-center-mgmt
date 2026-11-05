@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>科目管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/subjects.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 统计卡片 -->
+    <section class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="statCount">0</div>
+        <div class="stat-label">科目总数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statAvg">¥0</div>
+        <div class="stat-label">平均课单价</div>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索科目名称..." autocomplete="off">
+      </div>
+      {% if can('subject.write') %}
+      <button class="btn btn-primary" id="addBtn" type="button">+ 新增科目</button>
+      {% endif %}
+    </section>
+
+    <!-- 科目列表 -->
+    <section class="table-card">
+      <table class="subject-table">
+        <thead>
+          <tr>
+            <th>科目（名称 / 年费 / 课单价）</th>
+            <th>最近更新</th>
+            <th class="th-actions">操作</th>
+          </tr>
+        </thead>
+        <tbody id="subjectTbody">
+          <tr><td colspan="3" class="td-loading">加载中...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">科</div>
+      <div class="empty-title" id="emptyTitle">暂无科目</div>
+      <div class="empty-desc" id="emptyDesc">点击右上角「新增科目」创建第一个科目</div>
+    </div>
+  </main>
+
+  <!-- 新增/编辑科目弹窗 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新增科目</h3>
+        <button class="modal-close" id="modalClose" type="button">&times;</button>
+      </div>
+      <form id="subjectForm">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>科目名称 <span class="required">*</span></label>
+            <input type="text" id="f_name" maxlength="50" placeholder="如：少儿编程">
+          </div>
+          <div class="form-item">
+            <label>一年年费（元）<span class="required">*</span></label>
+            <input type="number" id="f_year_price" min="0" step="0.01" placeholder="如：9600">
+          </div>
+        </div>
+        <p class="form-tip">每年默认 <b>96 节课</b>，每节课单价 = 年费 ÷ 96，当前为 <b id="calcLessonPrice">—</b>。课单价将供缴费等其他模块使用。</p>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">保存科目</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认弹窗 -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3>删除确认</h3>
+        <button class="modal-close" id="confirmClose" type="button">&times;</button>
+      </div>
+      <p class="confirm-text" id="confirmText"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <footer class="footer">培训机构管理系统 · 科目管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let editingId = null;     // 正在编辑的科目 id，null 表示新增
+    let deletingId = null;    // 待删除的科目 id
+    let allSubjects = [];     // 全量科目数据
+    let toastTimer = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSubjects();
+
+      if ($('addBtn')) $('addBtn').addEventListener('click', () => openModal(null));
+      $('modalClose').addEventListener('click', closeModal);
+      $('cancelBtn').addEventListener('click', closeModal);
+      $('modalOverlay').addEventListener('click', (e) => {
+        if (e.target === $('modalOverlay')) closeModal();
+      });
+      $('subjectForm').addEventListener('submit', submitForm);
+      $('f_year_price').addEventListener('input', updateCalc);
+
+      $('confirmClose').addEventListener('click', closeConfirm);
+      $('confirmCancel').addEventListener('click', closeConfirm);
+      $('confirmOverlay').addEventListener('click', (e) => {
+        if (e.target === $('confirmOverlay')) closeConfirm();
+      });
+      $('confirmOk').addEventListener('click', doDelete);
+
+      // 搜索（本地按科目名称过滤）
+      let timer = null;
+      $('searchInput').addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(renderTable, 250);
+      });
+    });
+
+    // ---------- 数据加载 ----------
+    async function loadSubjects() {
+      try {
+        const res = await fetch('/api/subjects')
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        allSubjects = data.subjects;
+        renderStats(data.stats);
+        renderTable();
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+        $('emptyState').style.display = 'flex';
+        $('emptyTitle').textContent = '加载失败';
+        $('emptyDesc').textContent = '请确认服务器已启动后刷新页面';
+      }
+    }
+
+    function renderStats(stats) {
+      $('statCount').textContent = stats.count;
+      $('statAvg').textContent = fmtMoney(stats.avg_price);
+    }
+
+    function renderTable() {
+      const kw = $('searchInput').value.trim().toLowerCase();
+      const list = allSubjects.filter(s =>
+        !kw || (s.name || '').toLowerCase().includes(kw));
+      const tbody = $('subjectTbody');
+      tbody.innerHTML = '';
+
+      const hasAny = allSubjects.length > 0;
+      $('emptyState').style.display = list.length ? 'none' : 'flex';
+      if (!hasAny) {
+        $('emptyTitle').textContent = '暂无科目';
+        $('emptyDesc').textContent = '点击右上角「新增科目」创建第一个科目';
+      } else if (!list.length) {
+        $('emptyTitle').textContent = '没有找到匹配的科目';
+        $('emptyDesc').textContent = '换个关键字，或清空搜索框查看全部科目';
+      }
+
+      list.forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="td-course">
+            <div class="course-name">${escapeHtml(s.name)}</div>
+            <div class="course-unit">年费 ${fmtMoney(s.price)} · ${s.lesson_count || 96} 节 · ${fmtMoney(s.lesson_price)} / 节</div>
+          </td>
+          <td class="td-time">${escapeHtml((s.updated_at || s.created_at || '').slice(0, 16) || '—')}</td>
+          <td class="td-actions">
+            {% if can('subject.write') %}
+            <button class="btn-link" data-act="edit" type="button">编辑</button>
+            {% endif %}
+            {% if can('subject.delete') %}
+            <button class="btn-link btn-link-danger" data-act="del" type="button">删除</button>
+            {% endif %}
+          </td>`;
+        if (tr.querySelector('[data-act="edit"]')) tr.querySelector('[data-act="edit"]').addEventListener('click', () => openModal(s));
+        if (tr.querySelector('[data-act="del"]')) tr.querySelector('[data-act="del"]').addEventListener('click', () => askDelete(s));
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------- 弹窗 ----------
+    function openModal(subj) {
+      editingId = subj ? subj.id : null;
+      $('modalTitle').textContent = subj ? '编辑科目' : '新增科目';
+      $('f_name').value = subj ? subj.name : '';
+      // 年费：旧数据无年费字段时按课单价×96换算回填
+      $('f_year_price').value = subj
+        ? (subj.price > 0 ? subj.price : Math.round((subj.lesson_price || 0) * 96 * 100) / 100)
+        : '';
+      updateCalc();
+      $('modalOverlay').style.display = 'flex';
+      $('f_name').focus();
+    }
+
+    function closeModal() {
+      $('modalOverlay').style.display = 'none';
+      editingId = null;
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const name = $('f_name').value.trim();
+      const yearPrice = parseFloat($('f_year_price').value);
+      if (!name) { showToast('请填写科目名称', 'error'); return; }
+      if ($('f_year_price').value === '' || isNaN(yearPrice) || yearPrice < 0) {
+        showToast('请填写一年年费（不小于 0）', 'error'); return;
+      }
+
+      // 提交名称与年费，课单价由后端按 年费÷96 计算
+      const body = { name, year_price: yearPrice };
+
+      $('saveBtn').disabled = true;
+      try {
+        const res = await fetch(editingId ? `/api/subjects/${editingId}` : '/api/subjects', {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || '保存失败', 'error'); return; }
+        showToast(editingId ? '修改成功' : '新增成功', 'success');
+        closeModal();
+        await loadSubjects();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    // ---------- 删除 ----------
+    function askDelete(subj) {
+      deletingId = subj.id;
+      $('confirmText').textContent =
+        `确定删除科目「${subj.name}」（年费 ¥${subj.price}，${subj.lesson_count || 96} 节）吗？删除后不可恢复。`;
+      $('confirmOverlay').style.display = 'flex';
+    }
+
+    function closeConfirm() {
+      $('confirmOverlay').style.display = 'none';
+      deletingId = null;
+    }
+
+    async function doDelete() {
+      if (!deletingId) return;
+      $('confirmOk').disabled = true;
+      try {
+        const res = await fetch(`/api/subjects/${deletingId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || '删除失败', 'error'); return; }
+        showToast('删除成功', 'success');
+        closeConfirm();
+        await loadSubjects();
+      } catch (err) {
+        showToast('网络错误，删除失败', 'error');
+      } finally {
+        $('confirmOk').disabled = false;
+      }
+    }
+
+    // ---------- 通用 ----------
+    // 年费 ÷ 96 实时计算课单价
+    function updateCalc() {
+      const v = parseFloat($('f_year_price').value);
+      $('calcLessonPrice').textContent = (!isNaN(v) && v >= 0)
+        ? fmtMoney(v / 96) + ' / 节'
+        : '—';
+    }
+
+    function fmtMoney(v) {
+      const n = Number(v);
+      return isNaN(n) ? '—'
+        : '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg, type) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2400);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>缴费管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/payments.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 选项卡 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="manage" type="button">缴费管理</button>
+      <button class="tab" data-tab="query" type="button">记录查询</button>
+    </div>
+
+    <!-- ===== 缴费管理 ===== -->
+    <section id="tab-manage" class="tab-panel">
+      <!-- 统计卡片 -->
+      <section class="stats">
+        <div class="stat-card">
+          <div class="stat-value" id="statCount">0</div>
+          <div class="stat-label">缴费笔数</div>
+        </div>
+        <div class="stat-card stat-money">
+          <div class="stat-value" id="statTotal">¥0</div>
+          <div class="stat-label">收入合计</div>
+        </div>
+        <div class="stat-card stat-money">
+          <div class="stat-value" id="statMonth">¥0</div>
+          <div class="stat-label">本月收款</div>
+        </div>
+        <div class="stat-card stat-money">
+          <div class="stat-value" id="statToday">¥0</div>
+          <div class="stat-label">今日收款</div>
+        </div>
+      </section>
+
+      <!-- 工具栏 -->
+      <section class="toolbar">
+        <label class="field-label">日期范围</label>
+        <input type="date" id="startDate">
+        <span class="range-sep">至</span>
+        <input type="date" id="endDate">
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="搜索学生姓名 / 学号..." autocomplete="off">
+        </div>
+        {% if can('payment.write') %}
+    <button class="btn btn-primary" id="addBtn" type="button">+ 新建缴费记录</button>
+    {% endif %}
+      </section>
+
+      <!-- 缴费列表 -->
+      <section class="table-card">
+        <table class="pay-table">
+          <thead>
+            <tr>
+              <th>缴费日期</th>
+              <th>学号</th>
+              <th>学生姓名</th>
+              <th>科目</th>
+              <th>课程节数</th>
+              <th>金额</th>
+              <th>缴费方式</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th>缴费证明</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty-state" id="emptyState" style="display:none">
+          <div class="empty-icon">缴</div>
+          <div class="empty-title">暂无缴费记录</div>
+          <div class="empty-desc">点击右上角「新建缴费记录」开始登记</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ===== 记录查询 ===== -->
+    <section id="tab-query" class="tab-panel" style="display:none">
+      <div class="toolbar">
+        <label class="field-label">日期范围</label>
+        <input type="date" id="qStartDate">
+        <span class="range-sep">至</span>
+        <input type="date" id="qEndDate">
+        <label class="field-label">科目</label>
+        <select id="qCourse"><option value="">全部科目</option></select>
+        <label class="field-label">缴费方式</label>
+        <select id="qMethod">
+          <option value="">全部方式</option>
+          <option value="现金">现金</option>
+          <option value="微信">微信</option>
+          <option value="支付宝">支付宝</option>
+          <option value="银行转账">银行转账</option>
+          <option value="其他">其他</option>
+        </select>
+        <div class="search-box">
+          <input type="text" id="qKeyword" placeholder="搜索学生姓名 / 学号..." autocomplete="off">
+        </div>
+        <button class="btn btn-primary" id="queryBtn" type="button">查询</button>
+        {% if can('payment.export') %}
+      <button class="btn btn-export" id="exportBtn" type="button">导出 Excel</button>
+      {% endif %}
+      </div>
+      <div class="summary" id="querySummary"></div>
+      <div class="table-card">
+        <table class="pay-table">
+          <thead>
+            <tr>
+              <th>缴费日期</th>
+              <th>学号</th>
+              <th>学生姓名</th>
+              <th>科目</th>
+              <th>科目单价</th>
+              <th>课程节数</th>
+              <th>缴费金额</th>
+              <th>缴费方式</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th>缴费证明</th>
+            </tr>
+          </thead>
+          <tbody id="qTbody"></tbody>
+        </table>
+        <div class="empty-state" id="qEmpty" style="display:none">
+          <div class="empty-icon">查</div>
+          <div class="empty-title">暂无查询结果</div>
+          <div class="empty-desc">调整筛选条件后重新查询</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 新建/编辑弹窗 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新建缴费记录</h3>
+        <button class="modal-close" id="modalClose" type="button">&times;</button>
+      </div>
+      <form id="payForm">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>缴费学生 <span class="required">*</span></label>
+            <select id="f_student"></select>
+          </div>
+          <div class="form-item">
+            <label>缴费科目 <span class="required">*</span></label>
+            <select id="f_course"></select>
+          </div>
+          <div class="form-item">
+            <label>科目单价（元/节）</label>
+            <input type="text" id="f_unit_price" readonly placeholder="选择科目后自动填充">
+          </div>
+          <div class="form-item">
+            <label>课程节数 <span class="required">*</span></label>
+            <div class="lesson-count-wrapper" style="display:flex;gap:8px;align-items:center;">
+              <select id="f_lesson_preset" style="width:auto;">
+                <option value="96">96</option>
+                <option value="24">24</option>
+                <option value="48">48</option>
+                <option value="custom">手动输入</option>
+              </select>
+              <input type="number" id="f_lesson_count" min="1" step="1" value="96" placeholder="如：48" style="flex:1;">
+            </div>
+          </div>
+          <div class="form-item">
+            <label>折扣（%）<span class="required">*</span></label>
+            <input type="number" id="f_discount" min="0" max="100" step="1" value="100" placeholder="如：90">
+          </div>
+          <div class="form-item">
+            <label>优惠金额（元）</label>
+            <input type="number" id="f_discount_amount" min="0" step="0.01" value="0" placeholder="如：200">
+          </div>
+          <div class="form-item">
+            <label>缴费金额（元）<span class="required">*</span></label>
+            <input type="text" id="f_amount" readonly placeholder="自动计算">
+          </div>
+          <div class="form-item">
+            <label>缴费日期</label>
+            <input type="date" id="f_pay_date">
+          </div>
+          <div class="form-item">
+            <label>缴费方式</label>
+            <select id="f_method">
+              <option value="现金">现金</option>
+              <option value="微信">微信</option>
+              <option value="支付宝">支付宝</option>
+              <option value="银行转账">银行转账</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <div class="form-item form-item-full">
+            <label>备注</label>
+            <textarea id="f_remark" rows="2" maxlength="100" placeholder="如：48 课时包 / 续费（选填）"></textarea>
+          </div>
+          <div class="form-item form-item-full">
+            <label>缴费证明 <span class="proof-hint">（选填，最多 5 张，jpg/png/gif/webp，单张 5MB 内）</span></label>
+            <div class="proof-picker">
+              <div class="proof-thumbs" id="proofThumbs"></div>
+              <button type="button" class="btn btn-ghost proof-add-btn" id="proofAddBtn">+ 添加图片</button>
+              <input type="file" id="f_proofs" accept=".jpg,.jpeg,.png,.gif,.webp" multiple hidden>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认 -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3>删除确认</h3>
+        <button class="modal-close" id="confirmClose" type="button">&times;</button>
+      </div>
+      <p class="confirm-text" id="confirmText"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <footer class="footer">培训机构管理系统 · 缴费管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let editingId = null;
+    let deletingId = null;
+    let allPayments = [];
+    let studentsCache = [];
+    let subjectsCache = [];
+    // 缴费证明图片
+    let newProofs = [];        // 本次新选：[{file, url}]
+    let existingPhotos = [];   // 编辑时已有：[{id, filename, original_name}]
+    let removedPhotoIds = [];  // 编辑时标记删除的已有图片 id
+
+    // 权限标志（服务端下发，与后端 PERMISSION_MATRIX 一致）
+    const PERMS = {
+      write: {{ can('payment.write') | tojson }},
+      delete: {{ can('payment.delete') | tojson }},
+      export: {{ can('payment.export') | tojson }},
+      // 只读角色可在线查看证明图片，但不能下载
+      download: {{ (user and user.role != 'viewer') | tojson }},
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const monthAgo = new Date(Date.now() - 89 * 86400000);
+      $('startDate').value = `${monthAgo.getFullYear()}-${pad(monthAgo.getMonth() + 1)}-${pad(monthAgo.getDate())}`;
+      $('endDate').value = todayStr;
+      // 查询Tab默认日期范围：本年
+      $('qStartDate').value = `${now.getFullYear()}-01-01`;
+      $('qEndDate').value = todayStr;
+
+      loadReference();
+      loadPayments();
+
+      // 选项卡切换
+      document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+        $('tab-' + t.dataset.tab).style.display = '';
+        if (t.dataset.tab === 'query' && !lastQuery) loadQuery();
+      }));
+
+      if ($('addBtn')) $('addBtn').addEventListener('click', () => openModal(null));
+      $('modalClose').addEventListener('click', closeModal);
+      $('cancelBtn').addEventListener('click', closeModal);
+      $('modalOverlay').addEventListener('click', (e) => {
+        if (e.target === $('modalOverlay')) closeModal();
+      });
+      $('payForm').addEventListener('submit', submitForm);
+      $('proofAddBtn').addEventListener('click', () => $('f_proofs').click());
+      $('f_proofs').addEventListener('change', (e) => { addProofFiles([...e.target.files]); e.target.value = ''; });
+      $('proofThumbs').addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-rm-new]');
+        if (rm) removeNewProof(Number(rm.dataset.rmNew));
+        const rmOld = e.target.closest('[data-rm-old]');
+        if (rmOld) removeExistingProof(Number(rmOld.dataset.rmOld));
+      });
+      $('tbody').addEventListener('click', onProofClick);
+      $('qTbody').addEventListener('click', onProofClick);
+      $('f_course').addEventListener('change', onSubjectChange);
+      $('f_lesson_preset').addEventListener('change', () => {
+        const v = $('f_lesson_preset').value;
+        if (v !== 'custom') {
+          $('f_lesson_count').value = v;
+          $('f_lesson_count').readOnly = true;
+        } else {
+          $('f_lesson_count').readOnly = false;
+          $('f_lesson_count').value = '';
+          $('f_lesson_count').focus();
+        }
+        calcAmount();
+      });
+      ['f_lesson_count', 'f_discount', 'f_discount_amount'].forEach(id =>
+        $(id).addEventListener('input', calcAmount));
+      $('f_discount_amount').addEventListener('input', enforcePositive);
+      $('confirmClose').addEventListener('click', closeConfirm);
+      $('confirmCancel').addEventListener('click', closeConfirm);
+      $('confirmOverlay').addEventListener('click', (e) => {
+        if (e.target === $('confirmOverlay')) closeConfirm();
+      });
+      $('confirmOk').addEventListener('click', doDelete);
+
+      let timer = null;
+      $('searchInput').addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(loadPayments, 250);
+      });
+      ['startDate', 'endDate'].forEach(id => $(id).addEventListener('change', loadPayments));
+
+      $('queryBtn').addEventListener('click', loadQuery);
+      if ($('exportBtn')) $('exportBtn').addEventListener('click', exportQuery);
+    });
+
+    async function loadReference() {
+      try {
+        const [stRes, subRes] = await Promise.all([fetch('/api/students'), fetch('/api/subjects')]);
+        const stData = await stRes.json();
+        studentsCache = stData.students || [];
+        const subData = await subRes.json();
+        subjectsCache = subData.subjects || [];
+        const sel = $('f_student');
+        sel.innerHTML = '<option value="">— 请选择学生 —</option>' + studentsCache
+          .map(s => `<option value="${s.id}">${escapeHtml(s.name)}（${s.student_no || ''}）${s.course ? ' · ' + escapeHtml(s.course) : ''}</option>`).join('');
+        const opts = '<option value="">— 请选择科目 —</option>' + subjectsCache
+          .map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+        $('f_course').innerHTML = opts;
+        $('qCourse').innerHTML = '<option value="">全部科目</option>' + subjectsCache
+          .map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+      } catch (err) { /* 忽略，表单仍可手填 */ }
+    }
+
+    function onSubjectChange() {
+      const name = $('f_course').value;
+      const subj = subjectsCache.find(s => s.name === name);
+      $('f_unit_price').value = subj ? subj.lesson_price : '';
+      calcAmount();
+    }
+
+    function enforcePositive() {
+      const v = parseFloat($('f_discount_amount').value);
+      if (isNaN(v) || v < 0) {
+        $('f_discount_amount').value = 0;
+        showToast('优惠金额必须为正数', 'error');
+      }
+      calcAmount();
+    }
+
+    function calcAmount() {
+      const unit = parseFloat($('f_unit_price').value) || 0;
+      const lessons = parseFloat($('f_lesson_count').value) || 0;
+      const discount = parseFloat($('f_discount').value);
+      const discountAmount = parseFloat($('f_discount_amount').value) || 0;
+      if (unit > 0 && lessons > 0 && !isNaN(discount)) {
+        const result = unit * lessons * (discount / 100) - discountAmount;
+        $('f_amount').value = result > 0 ? result.toFixed(2) : '0';
+      } else {
+        $('f_amount').value = '';
+      }
+    }
+
+    // ---------- 缴费管理 ----------
+    async function loadPayments() {
+      const params = new URLSearchParams({
+        start: $('startDate').value || '',
+        end: $('endDate').value || '',
+        keyword: $('searchInput').value.trim(),
+      });
+      try {
+        const res = await fetch('/api/payments?' + params);
+        allPayments = await res.json();
+        renderTable(allPayments);
+        renderStats(allPayments);
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function renderStats(list) {
+      const now = new Date();
+      const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const todayStr = monthPrefix + '-' + String(now.getDate()).padStart(2, '0');
+      let total = 0, month = 0, today = 0;
+      list.forEach(p => {
+        total += p.amount;
+        if ((p.pay_date || '').startsWith(monthPrefix)) month += p.amount;
+        if (p.pay_date === todayStr) today += p.amount;
+      });
+      $('statCount').textContent = list.length;
+      $('statTotal').textContent = '¥' + total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      $('statMonth').textContent = '¥' + month.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      $('statToday').textContent = '¥' + today.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderTable(list) {
+      const tbody = $('tbody');
+      tbody.innerHTML = '';
+      $('emptyState').style.display = list.length ? 'none' : 'flex';
+
+      list.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="td-date">${p.pay_date || '—'}</td>
+          <td class="td-id">${escapeHtml(p.student_no || '')}</td>
+          <td class="td-name">${escapeHtml(p.student_name || '—')}</td>
+          <td>${p.course ? `<span class="course-tag">${escapeHtml(p.course)}</span>` : '—'}</td>
+          <td>${p.lesson_count || '—'}</td>
+          <td class="td-amount">¥${Number(p.amount).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+          <td><span class="method-tag">${escapeHtml(p.method || '—')}</span></td>
+          <td><span class="status-tag status-${(p.status || '已确认') === '已确认' ? 'confirmed' : 'pending'}">${escapeHtml(p.status || '已确认')}</span></td>
+          <td class="td-remark">${escapeHtml(p.remark || '—')}</td>
+          <td>${proofCellHtml(p)}</td>
+          <td class="td-actions">
+            ${PERMS.write ? `<button class="btn-link" data-act="edit" type="button">编辑</button>` : ''}
+            ${PERMS.delete ? `<button class="btn-link btn-link-danger" data-act="del" type="button">删除</button>` : ''}
+          </td>`;
+        if (tr.querySelector('[data-act="edit"]')) tr.querySelector('[data-act="edit"]').addEventListener('click', () => openModal(p));
+        if (tr.querySelector('[data-act="del"]')) tr.querySelector('[data-act="del"]').addEventListener('click', () => {
+          deletingId = p.id;
+          $('confirmText').textContent =
+            `确定要删除 ${p.pay_date} ${p.student_name} 的缴费记录（¥${p.amount}）吗？`;
+          $('confirmOverlay').style.display = 'flex';
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openModal(payment) {
+      editingId = payment ? payment.id : null;
+      $('modalTitle').textContent = payment ? '编辑缴费记录' : '新建缴费记录';
+      // 缴费证明：回显已有图片（新选与标记删除状态重置）
+      newProofs.forEach(n => URL.revokeObjectURL(n.url));
+      newProofs = [];
+      removedPhotoIds = [];
+      existingPhotos = (payment?.photos || []).map(p => ({ ...p }));
+      renderProofThumbs();
+      if (!payment) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        $('f_pay_date').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      }
+      $('f_student').value = payment ? payment.student_id : '';
+      $('f_course').value = payment?.course || '';
+      $('f_unit_price').value = payment?.unit_price || '';
+      $('f_lesson_count').value = payment?.lesson_count || 96;
+      const presetVal = String(payment?.lesson_count || 96);
+      if (['24', '48', '96'].includes(presetVal)) {
+        $('f_lesson_preset').value = presetVal;
+        $('f_lesson_count').readOnly = true;
+      } else {
+        $('f_lesson_preset').value = 'custom';
+        $('f_lesson_count').readOnly = false;
+      }
+      $('f_discount').value = payment?.discount_percent ?? 100;
+      $('f_discount_amount').value = payment?.discount_amount ?? 0;
+      if (payment?.course && !payment?.unit_price) {
+        onSubjectChange();
+      } else {
+        calcAmount();
+      }
+      $('f_pay_date').value = payment?.pay_date || $('f_pay_date').value;
+      $('f_method').value = payment?.method || '现金';
+      $('f_remark').value = payment?.remark || '';
+      $('modalOverlay').style.display = 'flex';
+      setTimeout(() => $('f_student').focus(), 50);
+    }
+
+    function closeModal() {
+      $('modalOverlay').style.display = 'none';
+      editingId = null;
+      clearProofState();
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const userRemark = $('f_remark').value.trim();
+      const discParts = [];
+      const discPct = parseFloat($('f_discount').value);
+      if (!isNaN(discPct) && discPct !== 100) {
+        discParts.push(`折扣${discPct}%`);
+      }
+      const discAmt = parseFloat($('f_discount_amount').value);
+      if (!isNaN(discAmt) && discAmt > 0) {
+        discParts.push(`优惠¥${discAmt}`);
+      }
+      const autoRemark = discParts.join('，');
+      const remark = [userRemark, autoRemark].filter(Boolean).join('，');
+      const data = {
+        student_id: Number($('f_student').value),
+        course: $('f_course').value.trim(),
+        unit_price: parseFloat($('f_unit_price').value) || 0,
+        lesson_count: parseInt($('f_lesson_count').value) || 0,
+        discount_percent: parseFloat($('f_discount').value) || 100,
+        discount_amount: parseFloat($('f_discount_amount').value) || 0,
+        amount: parseFloat($('f_amount').value) || 0,
+        pay_date: $('f_pay_date').value,
+        method: $('f_method').value,
+        remark: remark,
+      };
+      if (!data.student_id) {
+        showToast('请选择缴费学生', 'error');
+        $('f_student').focus();
+        return;
+      }
+      if (!data.course) {
+        showToast('请选择缴费科目', 'error');
+        $('f_course').focus();
+        return;
+      }
+      if (!(data.lesson_count > 0)) {
+        showToast('请填写课程节数', 'error');
+        $('f_lesson_count').focus();
+        return;
+      }
+      if (data.discount_amount < 0) {
+        showToast('优惠金额必须为正数', 'error');
+        $('f_discount_amount').focus();
+        return;
+      }
+      if (!(data.amount > 0)) {
+        showToast('缴费金额计算异常，请检查输入', 'error');
+        return;
+      }
+      $('saveBtn').disabled = true;
+      try {
+        const url = editingId ? `/api/payments/${editingId}` : '/api/payments';
+        const res = await fetch(url, {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const r = await res.json();
+        if (!res.ok) {
+          showToast(r.error || '保存失败', 'error');
+          return;
+        }
+        // 保存成功后同步缴费证明图片（删除标记移除的 + 上传新选的）
+        const paymentId = editingId || r.id;
+        if (newProofs.length || removedPhotoIds.length) {
+          showToast(editingId ? '修改成功，正在同步缴费证明...' : '缴费记录已保存，正在上传缴费证明...', 'success');
+          await syncProofs(paymentId);
+        } else {
+          showToast(editingId ? '修改成功' : '缴费记录已保存', 'success');
+        }
+        closeModal();
+        loadPayments();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    function closeConfirm() {
+      $('confirmOverlay').style.display = 'none';
+      deletingId = null;
+    }
+
+    async function doDelete() {
+      if (!deletingId) return;
+      try {
+        const res = await fetch(`/api/payments/${deletingId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          showToast('删除失败', 'error');
+          return;
+        }
+        closeConfirm();
+        showToast('删除成功', 'success');
+        loadPayments();
+      } catch (err) {
+        showToast('网络错误，删除失败', 'error');
+      }
+    }
+
+    // ---------- 记录查询 ----------
+    let lastQuery = null;
+
+    async function loadQuery() {
+      const params = new URLSearchParams({
+        start: $('qStartDate').value || '',
+        end: $('qEndDate').value || '',
+        keyword: $('qKeyword').value.trim(),
+      });
+      const course = $('qCourse').value;
+      const method = $('qMethod').value;
+      if (course) params.set('course', course);
+      if (method) params.set('method', method);
+
+      try {
+        const res = await fetch('/api/payments/query?' + params);
+        if (!res.ok) { showToast('查询失败', 'error'); return; }
+        const list = await res.json();
+        renderQueryTable(list);
+        renderQuerySummary(list);
+        lastQuery = { params: params.toString(), count: list.length };
+      } catch (err) {
+        showToast('查询失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function renderQuerySummary(list) {
+      const total = list.reduce((s, p) => s + (p.amount || 0), 0);
+      const students = new Set(list.map(p => p.student_id));
+      const avg = list.length ? total / list.length : 0;
+      $('querySummary').innerHTML = `
+        <div class="sum-chip">查询结果 <b>${list.length}</b> 笔</div>
+        <div class="sum-chip sum-money">金额合计 <b>¥${total.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</b></div>
+        <div class="sum-chip">涉及学生 <b>${students.size}</b> 人</div>
+        <div class="sum-chip">平均单笔 <b>¥${avg.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</b></div>`;
+    }
+
+    function renderQueryTable(list) {
+      const tbody = $('qTbody');
+      tbody.innerHTML = '';
+      $('qEmpty').style.display = list.length ? 'none' : 'flex';
+
+      list.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="td-date">${p.pay_date || '—'}</td>
+          <td class="td-id">${escapeHtml(p.student_no || '')}</td>
+          <td class="td-name">${escapeHtml(p.student_name || '—')}</td>
+          <td>${p.course ? `<span class="course-tag">${escapeHtml(p.course)}</span>` : '—'}</td>
+          <td>${p.unit_price ? '¥' + Number(p.unit_price).toFixed(2) : '—'}</td>
+          <td>${p.lesson_count || '—'}</td>
+          <td class="td-amount">¥${Number(p.amount).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+          <td><span class="method-tag">${escapeHtml(p.method || '—')}</span></td>
+          <td><span class="status-tag status-${(p.status || '已确认') === '已确认' ? 'confirmed' : 'pending'}">${escapeHtml(p.status || '已确认')}</span></td>
+          <td class="td-remark">${escapeHtml(p.remark || '—')}</td>
+          <td>${proofCellHtml(p)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function exportQuery() {
+      if (!lastQuery) { showToast('请先点击"查询"获取记录', 'error'); return; }
+      $('exportBtn').disabled = true;
+      try {
+        const res = await fetch('/api/payments/export?' + lastQuery.params);
+        if (!res.ok) { showToast('导出失败', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const end = new URLSearchParams(lastQuery.params).get('end');
+        a.download = '缴费查询_' + (end || new Date().toISOString().slice(0, 10)).replace(/-/g, '') + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        showToast(`已导出查询到的 ${lastQuery.count} 条记录`, 'success');
+      } catch (err) {
+        showToast('网络错误，导出失败', 'error');
+      } finally {
+        $('exportBtn').disabled = false;
+      }
+    }
+
+    // ---------- 通用 ----------
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    // ---------- 缴费证明 ----------
+    const PROOF_MAX = 5;
+    const PROOF_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const PROOF_MAX_SIZE = 5 * 1024 * 1024;
+
+    function keptPhotoCount() {
+      return existingPhotos.length - removedPhotoIds.length + newProofs.length;
+    }
+
+    function addProofFiles(files) {
+      const room = PROOF_MAX - keptPhotoCount();
+      if (room <= 0) {
+        showToast(`缴费证明最多 ${PROOF_MAX} 张`, 'error');
+        return;
+      }
+      if (files.length > room) {
+        showToast(`最多还能添加 ${room} 张（超出部分已忽略）`, 'warning');
+        files = files.slice(0, room);
+      }
+      for (const f of files) {
+        const ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
+        if (!PROOF_EXTS.includes(ext)) {
+          showToast(`不支持的格式：${f.name}（仅 jpg/png/gif/webp）`, 'error');
+          continue;
+        }
+        if (f.size > PROOF_MAX_SIZE) {
+          showToast(`图片过大：${f.name}（单张不超过 5MB）`, 'error');
+          continue;
+        }
+        newProofs.push({ file: f, url: URL.createObjectURL(f) });
+      }
+      renderProofThumbs();
+    }
+
+    function removeNewProof(idx) {
+      URL.revokeObjectURL(newProofs[idx].url);
+      newProofs.splice(idx, 1);
+      renderProofThumbs();
+    }
+
+    function removeExistingProof(photoId) {
+      const i = existingPhotos.findIndex(p => p.id === photoId);
+      if (i >= 0) existingPhotos.splice(i, 1);
+      if (!removedPhotoIds.includes(photoId)) removedPhotoIds.push(photoId);
+      renderProofThumbs();
+    }
+
+    function renderProofThumbs() {
+      const box = $('proofThumbs');
+      const kept = existingPhotos.map(p => `
+        <div class="proof-thumb-item" title="${escapeHtml(p.original_name || '')}">
+          <img src="/uploads/payment-photos/${encodeURIComponent(p.filename)}" alt="">
+          <span class="proof-rm" data-rm-old="${p.id}" title="移除">&times;</span>
+        </div>`).join('');
+      const news = newProofs.map((n, i) => `
+        <div class="proof-thumb-item" title="${escapeHtml(n.file.name)}">
+          <img src="${n.url}" alt="">
+          <span class="proof-rm" data-rm-new="${i}" title="移除">&times;</span>
+        </div>`).join('');
+      box.innerHTML = kept + news;
+      $('proofAddBtn').style.display = keptPhotoCount() >= PROOF_MAX ? 'none' : '';
+    }
+
+    // 列表缩略图点击 → 下载原图（隐藏a标签触发，不新开页面；只读角色不可下载）
+    function onProofClick(e) {
+      const img = e.target.closest('img.proof-thumb');
+      if (!img || !PERMS.download) return;
+      const a = document.createElement('a');
+      a.href = `/uploads/payment-photos/${img.dataset.file}?download=1`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function proofCellHtml(p) {
+      if (p.photos && p.photos.length) {
+        return `<div class="td-proofs">` + p.photos.map(ph =>
+          `<img class="proof-thumb" data-file="${encodeURIComponent(ph.filename)}"
+                src="/uploads/payment-photos/${encodeURIComponent(ph.filename)}"
+                title="${PERMS.download ? '点击下载：' + escapeHtml(ph.original_name || '缴费证明') : '缴费证明（只读角色不可下载）'}">`
+        ).join('') + (p.photos.length > 1 ? `<span class="proof-count">${p.photos.length}张</span>` : '') + `</div>`;
+      }
+      return '<span class="td-muted">—</span>';
+    }
+
+    async function syncProofs(paymentId) {
+      // 1) 删除编辑时标记移除的已有图片
+      for (const pid of removedPhotoIds) {
+        try { await fetch(`/api/payment-photos/${pid}`, { method: 'DELETE' }); } catch (e) { /* 忽略单张失败 */ }
+      }
+      // 2) 上传新选图片
+      if (newProofs.length) {
+        const fd = new FormData();
+        newProofs.forEach(n => fd.append('photos', n.file));
+        try {
+          const res = await fetch(`/api/payments/${paymentId}/photos`, { method: 'POST', body: fd });
+          if (!res.ok) {
+            const r = await res.json().catch(() => ({}));
+            showToast(r.error || '缴费证明上传失败，记录已保存', 'error');
+            return;
+          }
+        } catch (err) {
+          showToast('网络错误，缴费证明上传失败，记录已保存', 'error');
+          return;
+        }
+      }
+    }
+
+    function clearProofState() {
+      newProofs.forEach(n => URL.revokeObjectURL(n.url));
+      newProofs = [];
+      existingPhotos = [];
+      removedPhotoIds = [];
+      renderProofThumbs();
+    }
+
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

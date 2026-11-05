@@ -1,0 +1,84 @@
+<!-- 导航栏公共组件 -->
+<nav class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-logo">&lt;/&gt;</div>
+      <div>
+        <div class="brand-title">培训机构管理系统</div>
+        <div class="brand-sub">v3.0</div>
+      </div>
+    </div>
+    <!-- 按业务作业顺序排列：建档 → 教学 → 收费 → 分析 → 配置 -->
+    <div class="nav-links">
+      <a href="/" class="{% if request.path == '/' %}active{% endif %}">首页</a>
+      <a href="/students" class="{% if request.path == '/students' %}active{% endif %}">学生档案</a>
+      <a href="/courses" class="{% if request.path == '/courses' %}active{% endif %}">课程管理</a>
+      <a href="/subjects" class="{% if request.path == '/subjects' %}active{% endif %}">科目管理</a>
+      <a href="/lessons" class="{% if request.path == '/lessons' %}active{% endif %}">课时管理</a>
+      <a href="/attendance" class="{% if request.path == '/attendance' %}active{% endif %}">考勤管理</a>
+      <a href="/payments" class="{% if request.path == '/payments' %}active{% endif %}">缴费管理</a>
+      <a href="/refunds" class="{% if request.path == '/refunds' %}active{% endif %}">退费管理</a>
+      <a href="/teachers" class="{% if request.path == '/teachers' %}active{% endif %}">教师档案</a>
+      {% if user and can('report.view') %}
+      <a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">数据报表</a>
+      {% endif %}
+      {% if user and can('import.all') %}
+      <a href="/import" class="{% if request.path == '/import' %}active{% endif %}">数据导入</a>
+      {% endif %}
+      <!-- 系统设置：所有登录角色可见，页内功能按权限裁剪（非管理员仅可改密码） -->
+      {% if user %}
+      <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">系统设置</a>
+      {% endif %}
+    </div>
+    <div class="topbar-right">
+      {% if user %}
+      <div class="user-menu">
+        <div class="user-trigger">
+          <div class="user-avatar">{{ (user.display_name or user.username or 'U')[0] | upper }}</div>
+          <span>{{ user.display_name or user.username or '用户' }}</span>
+          <span class="role-tag role-{{ user.role }}" style="font-size:10px;padding:1px 6px">{{ role_name(user.role) }}</span>
+        </div>
+        <div class="user-dropdown">
+          <div class="user-dropdown-item" style="cursor:default;color:var(--text-muted);font-size:12px">
+            {{ user.username }} · {{ role_name(user.role) }}
+          </div>
+          <div class="user-dropdown-divider"></div>
+          <a href="/settings?tab=password" class="user-dropdown-item">修改密码</a>
+          <a href="/settings" class="user-dropdown-item">系统设置</a>
+          <div class="user-dropdown-divider"></div>
+          <a href="/logout" class="user-dropdown-item danger">退出登录</a>
+        </div>
+      </div>
+      {% endif %}
+      <!-- 手机端汉堡菜单按钮（桌面端隐藏） -->
+      <button class="nav-toggle" id="navToggle" type="button" aria-label="打开菜单">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+    </div>
+  </div>
+</nav>
+<!-- 手机端菜单展开时的半透明遮罩 -->
+<div class="nav-mask" id="navMask"></div>
+<script>
+/* 手机端汉堡菜单交互（桌面端按钮隐藏，此脚本无副作用） */
+(function () {
+  var btn = document.getElementById('navToggle');
+  if (!btn) return;
+  var mask = document.getElementById('navMask');
+  var links = document.querySelector('.nav-links');
+  function close() { document.body.classList.remove('nav-open'); }
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.body.classList.toggle('nav-open');
+  });
+  if (links) links.addEventListener('click', function (e) {
+    if (e.target.closest('a')) close();
+  });
+  if (mask) mask.addEventListener('click', close);
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 768) close();
+  });
+})();
+</script>

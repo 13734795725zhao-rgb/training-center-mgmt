@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课时管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/lessons.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 统计卡片（剩余课时为核心指标，放首位） -->
+    <section class="stats">
+      <div class="stat-card stat-main">
+        <div class="stat-value" id="statRemaining">0</div>
+        <div class="stat-label">剩余课时合计（节）</div>
+      </div>
+      <div class="stat-card stat-warn">
+        <div class="stat-value" id="statWarn">0</div>
+        <div class="stat-label">课时预警人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statStudents">0</div>
+        <div class="stat-label">学员人数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statBought">0</div>
+        <div class="stat-label">已购课时合计（节）</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statUsed">0</div>
+        <div class="stat-label">已消耗课时（节）</div>
+      </div>
+    </section>
+
+    <!-- 工具栏：查询 + 导出 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="按姓名 / 学号查询课时..." autocomplete="off">
+      </div>
+      <select id="classFilter" class="filter-select" title="按班级（课程）筛选学员">
+        <option value="">全部班级</option>
+      </select>
+      <select id="teacherFilter" class="filter-select" title="按授课教师筛选其所带班级学员">
+        <option value="">全部教师</option>
+      </select>
+      <label class="warn-check">
+        <input type="checkbox" id="warnOnly"> 只看课时预警
+      </label>
+      <button class="btn btn-primary" id="searchBtn" type="button">查询</button>
+      {% if can('lesson.export') %}
+        <button class="btn btn-ghost" id="exportBtn" type="button">导出 Excel</button>
+        {% endif %}
+    </section>
+
+    <!-- 课时列表 -->
+    <section class="table-card">
+      <table class="lesson-table">
+        <thead>
+          <tr>
+            <th>学号</th>
+            <th>姓名</th>
+            <th class="th-remaining">剩余课时</th>
+            <th>使用率</th>
+            <th>状态</th>
+            <th>已购课时</th>
+            <th>已退课时</th>
+            <th>已消耗课时</th>
+            <th>所属班级</th>
+            <th>授课教师</th>
+            <th>性别</th>
+            <th>年级</th>
+            <th>报读科目</th>
+          </tr>
+        </thead>
+        <tbody id="lessonTbody">
+          <tr><td colspan="13" class="td-loading">加载中...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="calc-tip">统计口径：剩余课时 = 已购课时 − 已退课时 − 已消耗课时；已消耗 = 出勤 + 迟到（请假 / 缺勤不扣课时）；剩余 ≤ 0 标记为课时预警。</p>
+
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">时</div>
+      <div class="empty-title" id="emptyTitle">暂无课时数据</div>
+      <div class="empty-desc" id="emptyDesc">请先在缴费管理中录入学生的购买课时</div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <footer class="footer">培训机构管理系统 · 课时管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let allRows = [];          // 当前展示的课时数据
+    let toastTimer = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadFilters();
+      loadLessons('');
+
+      $('searchBtn').addEventListener('click', () => loadLessons(getFilters()));
+      $('searchInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadLessons(getFilters());
+      });
+      $('warnOnly').addEventListener('change', () => loadLessons(getFilters()));
+      $('classFilter').addEventListener('change', () => loadLessons(getFilters()));
+      $('teacherFilter').addEventListener('change', () => loadLessons(getFilters()));
+      if ($('exportBtn')) $('exportBtn').addEventListener('click', exportExcel);
+    });
+
+    // ---------- 筛选条件 ----------
+    function getFilters() {
+      return {
+        keyword: $('searchInput').value.trim(),
+        class_id: $('classFilter').value,
+        teacher_id: $('teacherFilter').value
+      };
+    }
+
+    // ---------- 班级 / 教师下拉选项 ----------
+    async function loadFilters() {
+      try {
+        const res = await fetch('/api/lessons/filters');
+        if (!res.ok) return;
+        const data = await res.json();
+        const classSel = $('classFilter');
+        const teacherSel = $('teacherFilter');
+        (data.classes || []).forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = `${c.name}（${c.enrolled}人${c.teacher ? ' · ' + c.teacher : ''}）`;
+          classSel.appendChild(opt);
+        });
+        (data.teachers || []).forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = `${t.name}${t.subject ? '（' + t.subject + '）' : ''}`;
+          teacherSel.appendChild(opt);
+        });
+      } catch (err) { /* 下拉加载失败不阻塞主列表 */ }
+    }
+
+    // ---------- 数据加载 ----------
+    async function loadLessons({ keyword = '', class_id = '', teacher_id = '' } = {}) {
+      const params = new URLSearchParams();
+      if (keyword) params.set('keyword', keyword);
+      if (class_id) params.set('class_id', class_id);
+      if (teacher_id) params.set('teacher_id', teacher_id);
+      if ($('warnOnly').checked) params.set('warn', '1');
+      try {
+        const res = await fetch('/api/lessons?' + params.toString());
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        allRows = data.rows;
+        renderStats(data.stats);
+        renderTable();
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+        $('emptyState').style.display = 'flex';
+        $('emptyTitle').textContent = '加载失败';
+        $('emptyDesc').textContent = '请确认服务器已启动后刷新页面';
+      }
+    }
+
+    function renderStats(stats) {
+      $('statStudents').textContent = stats.students;
+      $('statBought').textContent = stats.total_bought;
+      $('statUsed').textContent = stats.total_used;
+      $('statRemaining').textContent = stats.total_remaining;
+      $('statWarn').textContent = stats.warn_count;
+    }
+
+    function renderTable() {
+      const tbody = $('lessonTbody');
+      tbody.innerHTML = '';
+      $('emptyState').style.display = allRows.length ? 'none' : 'flex';
+      if (!allRows.length) {
+        $('emptyTitle').textContent = $('warnOnly').checked ? '没有课时预警的学员' : '未找到匹配学员';
+        $('emptyDesc').textContent = '换个关键字，或清空搜索条件查看全部学员';
+        return;
+      }
+      allRows.forEach(r => {
+        const tr = document.createElement('tr');
+        const statusHtml = !r.total_lessons
+          ? '<span class="status-tag st-none">未购课</span>'
+          : (r.warn ? '<span class="status-tag st-warn">课时预警</span>' : '<span class="status-tag st-ok">正常</span>');
+        tr.innerHTML = `
+          <td class="td-id">${escapeHtml(r.student_no || String(r.id))}</td>
+          <td class="td-name">${escapeHtml(r.student_name || '')}</td>
+          <td class="td-remaining ${r.remaining_lessons <= 0 ? 'over' : ''}" title="已购 ${r.total_lessons} − 已退 ${r.refunded_lessons} − 已消耗 ${r.used_lessons}">${r.remaining_lessons}</td>
+          <td class="td-num">${r.use_rate}%</td>
+          <td>${statusHtml}</td>
+          <td class="td-num">${r.total_lessons}</td>
+          <td class="td-num">${r.refunded_lessons || 0}</td>
+          <td class="td-num">${r.used_lessons}</td>
+          <td class="td-class" title="${escapeHtml(r.class_names || '')}">${r.class_names ? escapeHtml(r.class_names) : '—'}</td>
+          <td class="td-teacher" title="${escapeHtml(r.class_teachers || '')}">${r.class_teachers ? escapeHtml(r.class_teachers) : '—'}</td>
+          <td><span class="gender-tag ${r.gender === '女' ? 'tag-female' : 'tag-male'}">${escapeHtml(r.gender || '—')}</span></td>
+          <td>${escapeHtml(r.grade || '—')}</td>
+          <td>${r.course ? `<span class="course-tag">${escapeHtml(r.course)}</span>` : '—'}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------- 导出 ----------
+    async function exportExcel() {
+      $('exportBtn').disabled = true;
+      try {
+        const params = new URLSearchParams();
+        const f = getFilters();
+        if (f.keyword) params.set('keyword', f.keyword);
+        if (f.class_id) params.set('class_id', f.class_id);
+        if (f.teacher_id) params.set('teacher_id', f.teacher_id);
+        if ($('warnOnly').checked) params.set('warn', '1');
+        const res = await fetch('/api/lessons/export?' + params.toString());
+        if (!res.ok) { showToast('导出失败', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `学员课时表_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('导出成功', 'success');
+      } catch (err) {
+        showToast('网络错误，导出失败', 'error');
+      } finally {
+        $('exportBtn').disabled = false;
+      }
+    }
+
+    // ---------- 通用 ----------
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg, type) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2400);
+    }
+  </script>
+</body>
+</html>

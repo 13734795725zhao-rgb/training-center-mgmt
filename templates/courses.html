@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课程管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/courses.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 统计卡片 -->
+    <section class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">课程总数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statActive">0</div>
+        <div class="stat-label">开课中</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statFinished">0</div>
+        <div class="stat-label">已结课</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statEnrolled">0</div>
+        <div class="stat-label">报读学生人数</div>
+      </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <section class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索课程名称 / 授课教师 / 课程类别..." autocomplete="off">
+      </div>
+      <select id="statusFilter">
+        <option value="">全部状态</option>
+        <option value="开课中">开课中</option>
+        <option value="已结课">已结课</option>
+      </select>
+      {% if can('course.write') %}
+      <button class="btn btn-primary" id="addBtn" type="button">+ 新建课程</button>
+      {% endif %}
+    </section>
+
+    <!-- 课程卡片网格 -->
+    <section class="course-grid" id="courseGrid"></section>
+
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">课</div>
+      <div class="empty-title">暂无课程</div>
+      <div class="empty-desc">点击右上角「新建课程」创建第一门课程</div>
+    </div>
+  </main>
+
+  <!-- 新建/编辑课程弹窗 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新建课程</h3>
+        <button class="modal-close" id="modalClose" type="button">&times;</button>
+      </div>
+      <form id="courseForm">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>课程名称 <span class="required">*</span></label>
+            <input type="text" id="f_name" maxlength="50" placeholder="如：少儿编程入门">
+          </div>
+          <div class="form-item">
+            <label>课程类别</label>
+            <select id="f_category"></select>
+          </div>
+          <div class="form-item">
+            <label>授课教师</label>
+            <select id="f_teacher"></select>
+          </div>
+          <div class="form-item form-item-full">
+            <label>上课时间（星期可多选 + 时间段）</label>
+            <div class="weekday-row">
+              <div class="weekday-chips" id="weekdayChips">
+                <button type="button" class="wd-chip" data-val="星期一" title="星期一">一</button>
+                <button type="button" class="wd-chip" data-val="星期二" title="星期二">二</button>
+                <button type="button" class="wd-chip" data-val="星期三" title="星期三">三</button>
+                <button type="button" class="wd-chip" data-val="星期四" title="星期四">四</button>
+                <button type="button" class="wd-chip" data-val="星期五" title="星期五">五</button>
+                <button type="button" class="wd-chip" data-val="星期六" title="星期六">六</button>
+                <button type="button" class="wd-chip" data-val="星期日" title="星期日">日</button>
+              </div>
+              <div class="weekday-quick">
+                <button type="button" data-quick="all">每天</button>
+                <button type="button" data-quick="workday">工作日</button>
+                <button type="button" data-quick="weekend">周末</button>
+                <button type="button" class="quick-clear" data-quick="clear">清除</button>
+              </div>
+            </div>
+            <div class="schedule-row">
+              <select id="f_start_time"></select>
+              <span class="schedule-sep">至</span>
+              <select id="f_end_time"></select>
+            </div>
+          </div>
+          <div class="form-item">
+            <label>开课日期 <span class="required">*</span></label>
+            <input type="date" id="f_start_date">
+          </div>
+          <div class="form-item">
+            <label>结课日期</label>
+            <input type="date" id="f_end_date" title="可以不填">
+          </div>
+          <div class="form-item">
+            <label>课时数</label>
+            <input type="number" id="f_hours" min="0" step="1" placeholder="如：48">
+          </div>
+          <div class="form-item">
+            <label>学费（元）</label>
+            <input type="number" id="f_price" min="0" step="0.01" placeholder="如：2800">
+          </div>
+          <div class="form-item">
+            <label>状态</label>
+            <select id="f_status">
+              <option value="开课中">开课中</option>
+              <option value="已结课">已结课</option>
+            </select>
+          </div>
+          <div class="form-item form-item-full">
+            <label>课程介绍</label>
+            <textarea id="f_description" rows="3" maxlength="500" placeholder="课程内容、教学目标等（选填）"></textarea>
+          </div>
+        </div>
+
+        <div class="section-title">
+          课程学员
+          <span class="section-hint">来自学生档案，可按学号或姓名搜索，支持添加多个；上课人数按学员自动统计</span>
+        </div>
+        <div class="enroll-search">
+          <input type="text" id="stuSearchInput" placeholder="输入学号或姓名搜索学生..." autocomplete="off">
+        </div>
+        <div class="stu-results" id="stuResults">
+          <div class="stu-results-tip">输入关键字搜索学生档案（结果显示：学号 / 姓名 / 性别 / 年龄 / 学校 / 年级）</div>
+        </div>
+        <div class="enrolled-chips" id="enrolledChips"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">保存课程</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认弹窗 -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3>删除确认</h3>
+        <button class="modal-close" id="confirmClose" type="button">&times;</button>
+      </div>
+      <p class="confirm-text" id="confirmText"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <footer class="footer">培训机构管理系统 · 课程管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let editingId = null;    // 正在编辑的课程 id，null 表示新建
+    let deletingId = null;   // 待删除的课程 id
+    let allCourses = [];     // 当前列表数据
+    let teachersCache = [];  // 教师选项缓存
+    let subjectsCache = [];  // 科目选项缓存（课程类别，来自科目管理）
+    const WEEK_ORDER = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    let selectedWeekdays = new Set();  // 已选上课星期
+    let selectedStudents = [];         // 已选课程学员 [{id, name}]
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadCourses();
+      loadTeacherOptions();
+      loadSubjectOptions();
+      buildTimeOptions();
+
+      // 星期多选标签
+      document.querySelectorAll('.wd-chip').forEach(chip => chip.addEventListener('click', () => {
+        const v = chip.dataset.val;
+        if (selectedWeekdays.has(v)) selectedWeekdays.delete(v);
+        else selectedWeekdays.add(v);
+        renderWeekdayChips();
+      }));
+      // 快捷选择
+      document.querySelectorAll('.weekday-quick button').forEach(btn => btn.addEventListener('click', () => {
+        const q = btn.dataset.quick;
+        if (q === 'all') selectedWeekdays = new Set(WEEK_ORDER);
+        else if (q === 'workday') selectedWeekdays = new Set(WEEK_ORDER.slice(0, 5));
+        else if (q === 'weekend') selectedWeekdays = new Set(['星期六', '星期日']);
+        else selectedWeekdays = new Set();
+        renderWeekdayChips();
+      }));
+
+      // 学员搜索（学号或姓名）
+      let stuTimer = null;
+      $('stuSearchInput').addEventListener('input', () => {
+        clearTimeout(stuTimer);
+        stuTimer = setTimeout(searchStudents, 250);
+      });
+
+      if ($('addBtn')) $('addBtn').addEventListener('click', () => openModal(null));
+      $('modalClose').addEventListener('click', closeModal);
+      $('cancelBtn').addEventListener('click', closeModal);
+      $('modalOverlay').addEventListener('click', (e) => {
+        if (e.target === $('modalOverlay')) closeModal();
+      });
+      $('courseForm').addEventListener('submit', submitForm);
+
+      $('confirmClose').addEventListener('click', closeConfirm);
+      $('confirmCancel').addEventListener('click', closeConfirm);
+      $('confirmOverlay').addEventListener('click', (e) => {
+        if (e.target === $('confirmOverlay')) closeConfirm();
+      });
+      $('confirmOk').addEventListener('click', doDelete);
+
+      let timer = null;
+      $('searchInput').addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(loadCourses, 250);
+      });
+      $('statusFilter').addEventListener('change', loadCourses);
+    });
+
+    // ---------- 数据加载 ----------
+    async function loadCourses() {
+      const params = new URLSearchParams({
+        keyword: $('searchInput').value.trim(),
+        status: $('statusFilter').value,
+      });
+      try {
+        const res = await fetch('/api/courses?' + params);
+        allCourses = await res.json();
+        renderCards(allCourses);
+        renderStats(allCourses);
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function renderStats(list) {
+      let active = 0, finished = 0;
+      // 报读统计：按学号去重，同一学生报多门课只计一人
+      const uniqueStudents = new Set();
+      list.forEach(c => {
+        if (c.status === '开课中') active++;
+        else finished++;
+        (c.students || []).forEach(s => {
+          uniqueStudents.add(s.student_no || `id:${s.id}`);
+        });
+      });
+      $('statTotal').textContent = list.length;
+      $('statActive').textContent = active;
+      $('statFinished').textContent = finished;
+      $('statEnrolled').textContent = uniqueStudents.size;
+    }
+
+    function renderCards(list) {
+      const grid = $('courseGrid');
+      grid.innerHTML = '';
+      $('emptyState').style.display = list.length ? 'none' : 'flex';
+
+      list.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'course-card' + (c.status === '已结课' ? ' course-finished' : '');
+        const priceText = (c.price != null && c.price !== '') ? `¥${Number(c.price)}` : '—';
+        card.innerHTML = `
+          <div class="course-head">
+            <div class="course-title-row">
+              ${c.category ? `<span class="category-tag">${escapeHtml(c.category)}</span>` : ''}
+              <h4 class="course-name">${escapeHtml(c.name)}</h4>
+            </div>
+            <span class="status-badge ${c.status === '开课中' ? 'sb-active' : 'sb-finished'}">${c.status}</span>
+          </div>
+          <div class="course-rows">
+            <div class="course-row"><span class="cr-label">授课教师</span><span>${escapeHtml(c.teacher || '—')}</span></div>
+            <div class="course-row"><span class="cr-label">上课时间</span><span>${escapeHtml(c.schedule || '—')}</span></div>
+            <div class="course-row"><span class="cr-label">开课/结课日期</span><span>${escapeHtml(c.start_date || '—')} ~ ${c.end_date ? escapeHtml(c.end_date) : '未定'}</span></div>
+            <div class="course-row"><span class="cr-label">课时 / 学费</span><span>${c.hours != null ? c.hours + ' 课时' : '—'} / ${priceText}</span></div>
+            <div class="course-row"><span class="cr-label">上课人数</span><span><b class="enrolled-num">${c.enrolled || 0} 人</b><span class="auto-count-tip">（按学员自动统计）</span></span></div>
+            ${c.students && c.students.length ? `<div class="course-row"><span class="cr-label">课程学员</span><span class="cr-students" title="${escapeHtml(c.students.map(s => s.name).join('、'))}">${escapeHtml(c.students.map(s => s.name).join('、'))}</span></div>` : ''}
+          </div>
+          ${c.description ? `<p class="course-desc">${escapeHtml(c.description)}</p>` : ''}
+          <div class="course-footer">
+            <span class="course-date">创建于 ${(c.created_at || '').slice(0, 10)}</span>
+            {% if can('course.write') %}
+            <div class="course-actions">
+              <button class="btn-link" data-act="edit" type="button">编辑</button>
+              <button class="btn-link btn-link-danger" data-act="del" type="button">删除</button>
+            </div>
+            {% endif %}
+          </div>`;
+        {% if can('course.write') %}
+        card.querySelector('[data-act="edit"]').addEventListener('click', () => openModal(c));
+        card.querySelector('[data-act="del"]').addEventListener('click', () => askDelete(c));
+        {% endif %}
+        grid.appendChild(card);
+      });
+    }
+
+    // ---------- 上课时间下拉 ----------
+    function buildTimeOptions() {
+      const times = [];
+      for (let h = 7; h <= 21; h++) {
+        times.push(`${String(h).padStart(2, '0')}:00`, `${String(h).padStart(2, '0')}:30`);
+      }
+      times.push('22:00');
+      const html = times.map(t => `<option value="${t}">${t}</option>`).join('');
+      $('f_start_time').innerHTML = html;
+      $('f_end_time').innerHTML = html;
+    }
+
+    // 若时间值不在预设选项中（历史数据），补充为选项
+    function ensureTimeOption(sel, value) {
+      if (value && ![...sel.options].some(o => o.value === value)) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        sel.appendChild(opt);
+      }
+    }
+
+    // 星期标签选中状态刷新
+    function renderWeekdayChips() {
+      document.querySelectorAll('.wd-chip').forEach(chip => {
+        chip.classList.toggle('on', selectedWeekdays.has(chip.dataset.val));
+      });
+    }
+
+    // 按固定顺序返回已选星期
+    function getSelectedWeekdays() {
+      return WEEK_ORDER.filter(d => selectedWeekdays.has(d));
+    }
+
+    // 解析历史上课时间文本，如 "周六、周四 9:00-11:00"
+    function parseSchedule(text) {
+      const t = (text || '').trim();
+      const result = { weekdays: [], start: '', end: '' };
+      if (!t) return result;
+      const alias = { '一': '星期一', '二': '星期二', '三': '星期三', '四': '星期四',
+                      '五': '星期五', '六': '星期六', '日': '星期日', '天': '星期日' };
+      let days = [];
+      if (t.includes('每天') || t.includes('每日')) {
+        days = [...WEEK_ORDER];
+      } else if (t.includes('工作日')) {
+        days = WEEK_ORDER.slice(0, 5);
+      } else if (t.includes('周末')) {
+        days = ['星期六', '星期日'];
+      } else {
+        const tokens = t.match(/[星期周][一二三四五六日天]/g) || [];
+        days = tokens.map(x => alias[x.slice(1)]);
+      }
+      result.weekdays = WEEK_ORDER.filter(d => days.includes(d));
+      const tm = t.match(/(\d{1,2}):(\d{2})\s*[-–~至]\s*(\d{1,2}):(\d{2})/);
+      if (tm) {
+        result.start = `${tm[1].padStart(2, '0')}:${tm[2]}`;
+        result.end = `${tm[3].padStart(2, '0')}:${tm[4]}`;
+      }
+      return result;
+    }
+
+    // ---------- 教师下拉选项（来自教师管理） ----------
+    async function loadTeacherOptions(selected) {
+      try {
+        const res = await fetch('/api/teachers');
+        teachersCache = await res.json();
+      } catch (err) {
+        showToast('教师列表加载失败', 'error');
+      }
+      renderTeacherOptions(selected);
+    }
+
+    function renderTeacherOptions(selected) {
+      const sel = $('f_teacher');
+      const current = selected || sel.value || '';
+      sel.innerHTML = '<option value="">— 未指定教师 —</option>' +
+        teachersCache.map(t =>
+          `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}${t.subject ? ' · ' + escapeHtml(t.subject) : ''}${t.status === '离职' ? '（离职）' : ''}</option>`
+        ).join('');
+      // 历史手填的教师名不在列表中时补充为选项，避免显示丢失
+      if (current && ![...sel.options].some(o => o.value === current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + '（未建档）';
+        sel.appendChild(opt);
+      }
+      sel.value = current;
+    }
+
+    // ---------- 课程类别下拉选项（来自科目管理） ----------
+    async function loadSubjectOptions(selected) {
+      try {
+        const res = await fetch('/api/subjects');
+        subjectsCache = (await res.json()).subjects || [];
+      } catch (err) {
+        showToast('科目列表加载失败', 'error');
+      }
+      renderSubjectOptions(selected);
+    }
+
+    function renderSubjectOptions(selected) {
+      const sel = $('f_category');
+      const current = selected || sel.value || '';
+      sel.innerHTML = '<option value="">— 未选择类别 —</option>' +
+        subjectsCache.map(s =>
+          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
+        ).join('');
+      // 历史课程的类别不在科目列表中时补充为选项，避免编辑时显示丢失
+      if (current && ![...sel.options].some(o => o.value === current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + '（科目管理中未建档）';
+        sel.appendChild(opt);
+      }
+      sel.value = current;
+    }
+
+    // ---------- 新建 / 编辑 ----------
+    function openModal(course) {
+      editingId = course ? course.id : null;
+      $('modalTitle').textContent = course ? '编辑课程' : '新建课程';
+      const map = {
+        f_name: course?.name || '',
+        f_category: course?.category || '',
+        f_start_date: course?.start_date || '',
+        f_end_date: course?.end_date || '',
+        f_hours: course?.hours ?? '',
+        f_price: course?.price ?? '',
+        f_status: course?.status || '开课中',
+        f_description: course?.description || '',
+      };
+      for (const [id, val] of Object.entries(map)) $(id).value = val;
+
+      // 新建课程时开课日期默认为当天（创建时间），结课日期保持为空
+      if (!course) {
+        const n = new Date();
+        $('f_start_date').value =
+          `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+      }
+
+      // 上课时间：解析历史文本并回填星期标签与时间下拉
+      const sch = parseSchedule(course?.schedule || '');
+      selectedWeekdays = new Set(sch.weekdays);
+      renderWeekdayChips();
+      ensureTimeOption($('f_start_time'), sch.start);
+      ensureTimeOption($('f_end_time'), sch.end);
+      $('f_start_time').value = sch.start || '09:00';
+      $('f_end_time').value = sch.end || '11:00';
+      // 每次打开弹窗时刷新教师选项（可能刚在教师管理中新增）
+      loadTeacherOptions(course?.teacher || '');
+      // 每次打开弹窗时刷新课程类别选项（可能刚在科目管理中新增）
+      loadSubjectOptions(course?.category || '');
+
+      // 课程学员：编辑时载入已有名单
+      selectedStudents = course?.students
+        ? course.students.map(s => ({ id: s.id, name: s.name }))
+        : [];
+      renderEnrolledChips();
+      $('stuSearchInput').value = '';
+      $('stuResults').innerHTML = '<div class="stu-results-tip">输入关键字搜索学生档案（结果显示：学号 / 姓名 / 性别 / 年龄 / 学校 / 年级）</div>';
+
+      $('modalOverlay').style.display = 'flex';
+      setTimeout(() => $('f_name').focus(), 50);
+    }
+
+    function closeModal() {
+      $('modalOverlay').style.display = 'none';
+      editingId = null;
+    }
+
+    async function submitForm(e) {
+      e.preventDefault();
+      const data = {
+        name: $('f_name').value.trim(),
+        category: $('f_category').value.trim(),
+        teacher: $('f_teacher').value.trim(),
+        start_date: $('f_start_date').value,
+        end_date: $('f_end_date').value,
+        hours: $('f_hours').value,
+        price: $('f_price').value,
+        status: $('f_status').value,
+        description: $('f_description').value.trim(),
+      };
+      if (!data.name) {
+        showToast('请填写课程名称', 'error');
+        $('f_name').focus();
+        return;
+      }
+      if (!data.start_date) {
+        showToast('请选择开课日期', 'error');
+        $('f_start_date').focus();
+        return;
+      }
+      if (data.end_date && data.end_date < data.start_date) {
+        showToast('结课日期不能早于开课日期', 'error');
+        $('f_end_date').focus();
+        return;
+      }
+      // 上课时间：多选星期 + 开始/结束时间 合并保存
+      const days = getSelectedWeekdays();
+      const startTime = $('f_start_time').value;
+      const endTime = $('f_end_time').value;
+      if (days.length) {
+        if (!startTime || !endTime) {
+          showToast('请选择上课的开始与结束时间', 'error');
+          return;
+        }
+        if (endTime <= startTime) {
+          showToast('结束时间需晚于开始时间', 'error');
+          return;
+        }
+      }
+      data.schedule = days.length ? `${days.join('、')} ${startTime}-${endTime}` : '';
+      $('saveBtn').disabled = true;
+      try {
+        const url = editingId ? `/api/courses/${editingId}` : '/api/courses';
+        const res = await fetch(url, {
+          method: editingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const r = await res.json();
+        if (!res.ok) {
+          showToast(r.error || '保存失败', 'error');
+          return;
+        }
+        // 同步课程学员名单
+        const courseId = editingId || r.id;
+        const res2 = await fetch(`/api/courses/${courseId}/students`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ student_ids: selectedStudents.map(s => s.id) }),
+        });
+        if (!res2.ok) {
+          showToast('课程已保存，但学员名单同步失败', 'error');
+        }
+        closeModal();
+        showToast(editingId ? '修改成功' : '创建成功', 'success');
+        loadCourses();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    // ---------- 删除 ----------
+    function askDelete(c) {
+      deletingId = c.id;
+      $('confirmText').textContent =
+        `确定要删除课程「${c.name}」吗？${c.enrolled ? `当前有 ${c.enrolled} 名学员报名该课程，删除后学员名单将一并移除（学生档案不受影响）。` : ''}`;
+      $('confirmOverlay').style.display = 'flex';
+    }
+
+    function closeConfirm() {
+      $('confirmOverlay').style.display = 'none';
+      deletingId = null;
+    }
+
+    async function doDelete() {
+      if (!deletingId) return;
+      try {
+        const res = await fetch(`/api/courses/${deletingId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          showToast('删除失败', 'error');
+          return;
+        }
+        closeConfirm();
+        showToast('删除成功', 'success');
+        loadCourses();
+      } catch (err) {
+        showToast('网络错误，删除失败', 'error');
+      }
+    }
+
+    // ---------- 课程学员（搜索学生档案，可多选） ----------
+    async function searchStudents() {
+      const kw = $('stuSearchInput').value.trim();
+      const box = $('stuResults');
+      if (!kw) {
+        box.innerHTML = '<div class="stu-results-tip">输入关键字搜索学生档案（结果显示：学号 / 姓名 / 性别 / 年龄 / 学校 / 年级）</div>';
+        return;
+      }
+      try {
+        const res = await fetch('/api/students?keyword=' + encodeURIComponent(kw));
+        const data = await res.json();
+        renderStuResults(data.students || []);
+      } catch (err) {
+        box.innerHTML = '<div class="stu-results-tip">搜索失败，请检查服务器连接</div>';
+      }
+    }
+
+    function renderStuResults(list) {
+      const box = $('stuResults');
+      if (!list.length) {
+        box.innerHTML = `<div class="stu-results-tip">未找到与「${escapeHtml($('stuSearchInput').value.trim())}」匹配的学生</div>`;
+        return;
+      }
+      box.innerHTML = '';
+      list.forEach(s => {
+        const added = selectedStudents.some(x => x.id === s.id);
+        const row = document.createElement('div');
+        row.className = 'stu-row';
+        row.innerHTML = `
+          <span class="sr-no">${escapeHtml(s.student_no || '')}</span>
+          <span class="sr-name">${escapeHtml(s.name)}</span>
+          <span class="sr-info">${escapeHtml(s.gender)}</span>
+          <span class="sr-info">${escapeHtml(calcAge(s.birthdate, s.id_card))}</span>
+          <span class="sr-info sr-wide" title="${escapeHtml(s.school || '')}">${escapeHtml(s.school || '—')}</span>
+          <span class="sr-info">${escapeHtml(s.grade || '—')}</span>
+          <button type="button" class="sr-add" ${added ? 'disabled' : ''}>${added ? '已添加' : '+ 添加'}</button>`;
+        row.querySelector('.sr-add').addEventListener('click', () => {
+          if (selectedStudents.some(x => x.id === s.id)) return;
+          selectedStudents.push({ id: s.id, name: s.name });
+          renderEnrolledChips();
+          renderStuResults(list);
+        });
+        box.appendChild(row);
+      });
+    }
+
+    function renderEnrolledChips() {
+      const box = $('enrolledChips');
+      box.innerHTML = '';
+      if (!selectedStudents.length) {
+        box.innerHTML = '<div class="stu-results-tip">尚未添加学员</div>';
+        return;
+      }
+      selectedStudents.forEach((s, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'enrolled-chip';
+        chip.innerHTML = `${escapeHtml(s.name)}<button type="button" title="移除该学员">&times;</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          selectedStudents.splice(i, 1);
+          renderEnrolledChips();
+          searchStudents();
+        });
+        box.appendChild(chip);
+      });
+    }
+
+    function calcAge(birthdate, idCard) {
+      let bd = birthdate;
+      // 出生日期未填时从身份证号推算
+      if (!bd && idCard && /^\d{17}[\dXx]$/.test(idCard)) {
+        bd = `${idCard.slice(6, 10)}-${idCard.slice(10, 12)}-${idCard.slice(12, 14)}`;
+      }
+      if (!bd) return '—';
+      const b = new Date(bd);
+      if (isNaN(b.getTime())) return '—';
+      const now = new Date();
+      let age = now.getFullYear() - b.getFullYear();
+      const m = now.getMonth() - b.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+      return (age >= 0 && age < 150) ? age + ' 岁' : '—';
+    }
+
+    // ---------- 通用 ----------
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

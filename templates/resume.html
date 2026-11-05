@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学生简历 - {{ student.name }}</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/resume.css">
+</head>
+<body>
+  <!-- 工具栏（打印时隐藏；只读角色不显示任何操作按钮，仅可查看） -->
+  {% if can_edit_resume or can_export_resume %}
+  <div class="resume-toolbar no-print">
+    <span class="toolbar-tip">基本信息来自学生档案，经历与作品内容需在「编辑简历」中填写；导出 PDF 时请取消勾选「页眉和页脚」</span>
+    {% if can_edit_resume %}
+    <a class="btn btn-ghost" href="/resume/{{ student.id }}/edit">编辑简历</a>
+    {% endif %}
+    {% if can_export_resume %}
+    <button class="btn btn-primary" type="button" onclick="window.print()">导出为 PDF</button>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% macro item_head(it) %}
+  <div class="cv-item-head">
+    <h3 class="cv-item-title">{{ it.title }}{% if it.subtitle %}<span class="cv-item-sub">{{ it.subtitle }}</span>{% endif %}</h3>
+    {% if it.date_text %}<span class="cv-item-date">{{ it.date_text }}</span>{% endif %}
+  </div>
+  {% endmacro %}
+
+  {% macro item_section(title, items) %}
+  <section class="cv-section">
+    <h2 class="cv-sec-title">{{ title }}</h2>
+    {% for it in items %}
+    <div class="cv-item">
+      {{ item_head(it) }}
+      {% if it.description %}<p class="cv-item-desc">{{ it.description }}</p>{% endif %}
+      {% if it.attachments %}
+      <ul class="cv-attaches">
+        {% for a in it.attachments %}
+        <li>{{ a.icon }} {{ a.original_name }}（{{ a.size_text }}）</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endmacro %}
+
+  <div class="cv-page">
+    <!-- ===== 头部：姓名 + 概要 + 证件照 ===== -->
+    <header class="cv-header">
+      <div class="cv-head-main">
+        <h1 class="cv-name">{{ student.name }}</h1>
+        <p class="cv-meta">
+          {{ student.gender or '待填写' }}
+          {%- if age %} · {{ age }} 岁{% endif %}
+          {{ '· ' + student.phone if student.phone }}
+          · 学号 {{ student.student_no or '待填写' }}
+        </p>
+      </div>
+      <div class="cv-photo">
+        {% if photos %}
+        <img src="{{ url_for('get_photo', filename=photos[0].filename) }}" alt="证件照">
+        {% else %}
+        <div class="cv-photo-empty">证件照</div>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- ===== 基本信息（来自学生档案，编辑档案后自动同步） ===== -->
+    <section class="cv-section">
+      <h2 class="cv-sec-title">基本信息<span class="cv-sec-tip">数据来自学生档案</span></h2>
+      <div class="cv-info-grid">
+        <div class="cv-info-item">
+          <span class="cv-label">出生日期</span>
+          <span class="cv-value">{{ student.birthdate or '待填写' }}</span>
+        </div>
+        <div class="cv-info-item">
+          <span class="cv-label">就读学校</span>
+          <span class="cv-value">{{ student.school or '待填写' }}</span>
+        </div>
+        <div class="cv-info-item">
+          <span class="cv-label">年级</span>
+          <span class="cv-value">{{ student.grade or '待填写' }}</span>
+        </div>
+        <div class="cv-info-item">
+          <span class="cv-label">联系电话</span>
+          <span class="cv-value">{{ student.phone or '待填写' }}</span>
+        </div>
+        <div class="cv-info-item cv-info-full">
+          <span class="cv-label">家庭住址</span>
+          <span class="cv-value">{{ student.address or '待填写' }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 监护人（来自学生档案） ===== -->
+    <section class="cv-section">
+      <h2 class="cv-sec-title">监护人<span class="cv-sec-tip">数据来自学生档案</span></h2>
+      {% if guardians %}
+      <div class="cv-guardians">
+        {% for g in guardians %}
+        <div class="cv-guardian">
+          <span class="cv-guardian-name">{{ g.name or '待填写' }}</span>
+          <span class="cv-guardian-contact">电话 {{ g.phone or '待填写' }}{% if g.wechat %} · 微信 {{ g.wechat }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="cv-empty">监护人信息待填写（请在学生档案中补充）</p>
+      {% endif %}
+    </section>
+
+    <!-- ===== 以下栏目全部由人员在「编辑简历」中填写，不自动生成 ===== -->
+
+    <!-- 教育经历 -->
+    {% if sections.education %}
+      {{ item_section('教育经历', sections.education) }}
+    {% else %}
+    <section class="cv-section">
+      <h2 class="cv-sec-title">教育经历</h2>
+      <p class="cv-empty">教育经历待填写</p>
+    </section>
+    {% endif %}
+
+    <!-- 培训经历 -->
+    {% if sections.training %}{{ item_section('培训经历', sections.training) }}{% endif %}
+
+    <!-- 项目经验 -->
+    {% if sections.project %}{{ item_section('项目经验', sections.project) }}{% endif %}
+
+    <!-- 获奖与荣誉（证书获取与竞赛获奖合并） -->
+    {% if sections.award %}{{ item_section('获奖与荣誉', sections.award) }}{% endif %}
+
+    <!-- 社会实践与活动经历 -->
+    {% if sections.social %}{{ item_section('社会实践与活动经历', sections.social) }}{% endif %}
+
+    <!-- 兴趣爱好与性格特点：兴趣爱好 / 性格描述 / 自我评价（三项均为纯文字描述） -->
+    {% if hobby_text or personality_text or student.notes %}
+    <section class="cv-section">
+      <h2 class="cv-sec-title">兴趣爱好与性格特点</h2>
+      {% if hobby_text %}
+      <div class="cv-item">
+        <div class="cv-item-head"><h3 class="cv-item-title">兴趣爱好</h3></div>
+        <p class="cv-item-desc">{{ hobby_text }}</p>
+      </div>
+      {% endif %}
+      {% if personality_text %}
+      <div class="cv-item">
+        <div class="cv-item-head"><h3 class="cv-item-title">性格描述</h3></div>
+        <p class="cv-item-desc">{{ personality_text }}</p>
+      </div>
+      {% endif %}
+      {% if student.notes %}
+      <div class="cv-item">
+        <div class="cv-item-head"><h3 class="cv-item-title">自我评价</h3></div>
+        <p class="cv-item-desc">{{ student.notes }}</p>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- 作品展示（仅展示「作品展示」栏目中人工添加的条目及其资料） -->
+    {% if sections.work %}
+    <section class="cv-section cv-section-works">
+      <h2 class="cv-sec-title">作品展示</h2>
+      {% for it in sections.work %}
+      <div class="cv-work">
+        {{ item_head(it) }}
+        {% if it.description %}<p class="cv-item-desc">{{ it.description }}</p>{% endif %}
+        {% set imgs = it.attachments | selectattr('is_image') | list %}
+        {% set others = it.attachments | rejectattr('is_image') | list %}
+        {% if imgs %}
+        <div class="cv-gallery">
+          {% for a in imgs %}
+          <figure class="cv-figure">
+            <img src="{{ url_for('get_file', filename=a.filename) }}" alt="{{ a.original_name }}">
+            <figcaption>{{ a.original_name }}</figcaption>
+          </figure>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if others %}
+        <ul class="cv-attaches">
+          {% for a in others %}
+          <li>{{ a.icon }} {{ a.original_name }}（{{ a.size_text }}）</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <footer class="cv-footer">本简历由培训机构管理系统生成</footer>
+  </div>
+</body>
+</html>

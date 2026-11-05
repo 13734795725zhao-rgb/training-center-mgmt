@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>考勤管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/attendance.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 选项卡 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="register" type="button">考勤登记</button>
+      <button class="tab" data-tab="makeup" type="button">补考勤</button>
+      <button class="tab" data-tab="history" type="button">记录查询</button>
+    </div>
+
+    <!-- ===== 考勤登记：先列出当天有课班级，班内为该班学员 ===== -->
+    <section id="tab-register" class="tab-panel">
+      <div class="toolbar">
+        <label class="field-label">考勤日期</label>
+        <input type="date" id="attDate">
+        <div class="toolbar-flex"></div>
+      </div>
+      <div class="summary" id="regSummary"></div>
+      <div id="classList"></div>
+      <div class="empty-state" id="regEmpty" style="display:none">
+        <div class="empty-icon">勤</div>
+        <div class="empty-title">考勤日期当天没有上课的班级</div>
+        <div class="empty-desc">请更换考勤日期，或到「课程管理」为课程设置开课日期与上课时间</div>
+      </div>
+    </section>
+
+    <!-- ===== 补考勤：为缺登的学生补录考勤 ===== -->
+    <section id="tab-makeup" class="tab-panel" style="display:none">
+      <div class="toolbar">
+        <label class="field-label">日期范围</label>
+        <input type="date" id="mkStart">
+        <span class="range-sep">至</span>
+        <input type="date" id="mkEnd">
+        <button class="btn btn-ghost" id="mkQueryBtn" type="button">查询</button>
+        <div class="toolbar-flex"></div>
+        {% if can('attendance.save') %}
+      <button class="btn btn-primary" id="mkAddBtn" type="button">+ 新增考勤</button>
+      {% endif %}
+      </div>
+      <div class="list-card">
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>课程</th>
+              <th>本节课</th>
+              <th>上课时间</th>
+              <th>老师</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="mkTbody"></tbody>
+        </table>
+        <div class="empty-state" id="mkEmpty" style="display:none">
+          <div class="empty-icon">补</div>
+          <div class="empty-title">暂无补考勤记录</div>
+          <div class="empty-desc">点击右上角「新增考勤」为缺登的学生补录考勤</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 记录查询 ===== -->
+    <section id="tab-history" class="tab-panel" style="display:none">
+      <div class="toolbar">
+        <label class="field-label">日期范围</label>
+        <input type="date" id="startDate">
+        <span class="range-sep">至</span>
+        <input type="date" id="endDate">
+        <label class="field-label">状态</label>
+        <div class="status-group status-filter" id="statusPills" title="可多选；不选 = 全部状态">
+          <button type="button" class="status-btn st-present" data-status="present">出勤</button>
+          <button type="button" class="status-btn st-late" data-status="late">迟到</button>
+          <button type="button" class="status-btn st-leave" data-status="leave">请假</button>
+          <button type="button" class="status-btn st-absent" data-status="absent">缺勤</button>
+        </div>
+        <div class="search-box">
+          <input type="text" id="historyKeyword" placeholder="学号或学生姓名..." autocomplete="off">
+        </div>
+        <button class="btn btn-primary" id="queryBtn" type="button">查询</button>
+        <button class="btn btn-ghost" id="historyAllBtn" type="button" title="清空日期范围，查询全部考勤记录">不限日期</button>
+        {% if can('attendance.export') %}
+      <button class="btn btn-ghost" id="exportBtn" type="button">导出 Excel</button>
+      {% endif %}
+      </div>
+      <div class="summary">
+        <div class="sum-chips" id="hisSummary"></div>
+        {% if can('attendance.batch') %}
+        <button class="btn btn-ghost btn-sm sum-action" id="hisEditBtn" type="button">修改查询信息状态</button>
+        {% endif %}
+      </div>
+      <div class="list-card">
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>课程</th>
+              <th>本节课</th>
+              <th>上课时间</th>
+              <th>老师</th>
+              <th>状态</th>
+              <th>备注</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="hisTbody"></tbody>
+        </table>
+        <div class="empty-state" id="hisEmpty" style="display:none">
+          <div class="empty-icon">查</div>
+          <div class="empty-title">暂无考勤记录</div>
+          <div class="empty-desc">调整筛选条件后重新查询</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 新增考勤（补登）弹窗 -->
+  <div class="modal-overlay" id="mkOverlay" style="display:none">
+    <div class="modal-box mk-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">新增考勤（补登）</h3>
+        <button class="modal-close" id="mkClose" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">学生 <span class="req">*</span></label>
+          <div class="mk-stu-picked" id="mkStuPicked" style="display:none"></div>
+          <input type="text" id="mkStuSearch" class="form-input" placeholder="输入姓名 / 学号搜索学生档案，点击结果选定" autocomplete="off">
+          <div class="mk-stu-results" id="mkStuResults"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">课程 <span class="req">*</span></label>
+          <select id="mkCourse" class="form-select"></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">上课日期 <span class="req">*</span></label>
+            <input type="date" id="mkDate" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">开始时间</label>
+            <select id="mkStartTime" class="form-select"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">结束时间</label>
+            <select id="mkEndTime" class="form-select"></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">本节课名称</label>
+          <input type="text" id="mkLesson" class="form-input" maxlength="100" placeholder="如：第 12 课 · 循环结构">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">上课老师</label>
+            <select id="mkTeacher" class="form-select"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">出勤状态 <span class="req">*</span></label>
+            <select id="mkStatus" class="form-select">
+              <option value="present">出勤</option>
+              <option value="late">迟到</option>
+              <option value="leave">请假</option>
+              <option value="absent">缺勤</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注</label>
+          <input type="text" id="mkRemark" class="form-input" maxlength="100" placeholder="选填">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-default" id="mkCancel" type="button">取消</button>
+        <button class="modal-btn modal-btn-primary" id="mkSave" type="button">保存考勤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 记录查询：批量修改查询结果（状态 / 备注）——仅管理员 / 校长 / 教务可见可改 -->
+  {% if can('attendance.batch') %}
+  <div class="modal-overlay" id="hisEditOverlay" style="display:none">
+    <div class="modal-box he-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">修改查询信息状态</h3>
+        <button class="modal-close" id="hisEditClose" type="button">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="he-tip" id="heTip">对本次查询出的考勤记录批量修改状态或备注</div>
+        <div class="form-group">
+          <label class="form-label">改为状态 <span class="he-hint">不选 = 保持原状态</span></label>
+          <div class="status-group he-status" id="heStatusGroup">
+            <button type="button" class="status-btn st-present" data-status="present">出勤</button>
+            <button type="button" class="status-btn st-late" data-status="late">迟到</button>
+            <button type="button" class="status-btn st-leave" data-status="leave">请假</button>
+            <button type="button" class="status-btn st-absent" data-status="absent">缺勤</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注 <span class="he-hint">留空 = 保持原备注；选中「清空备注」则置空</span></label>
+          <div class="he-remark-row">
+            <input type="text" id="heRemark" class="form-input" maxlength="100" placeholder="选填，如：迟到原因、请假说明">
+            <label class="he-clear"><input type="checkbox" id="heClearRemark"> 清空备注</label>
+          </div>
+        </div>
+        <div class="form-group he-list-group">
+          <label class="form-label">选择要修改的记录（仅当前查询结果）</label>
+          <div class="he-list-bar">
+            <button class="btn btn-ghost btn-sm" id="heAllBtn" type="button">全选</button>
+            <button class="btn btn-ghost btn-sm" id="heInvertBtn" type="button">反选</button>
+            <button class="btn btn-ghost btn-sm" id="heNoneBtn" type="button">清空选择</button>
+            <span class="he-count" id="heCount">已选 0 条</span>
+          </div>
+          <div class="he-list" id="heList"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn modal-btn-default" id="heCancel" type="button">取消</button>
+        <button class="modal-btn modal-btn-primary" id="heSave" type="button">保存修改</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="toast" id="toast"></div>
+  <footer class="footer">培训机构管理系统 · 考勤管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const STATUS = {
+      present: { label: '出勤', cls: 'st-present' },
+      late:    { label: '迟到', cls: 'st-late' },
+      leave:   { label: '请假', cls: 'st-leave' },
+      absent:  { label: '缺勤', cls: 'st-absent' },
+    };
+
+    let courses = [];     // 全部课程（班级），含各班学员名单
+    let selections = {};  // student_id -> {status, remark} 当前登记选择
+    let foldMap = {};     // course_id -> 学员名单是否收起（未记录默认收起）
+    let lessonMap = {};   // course_id -> 本节课（上课）名称，保存时写入本班每位学员考勤记录
+    let tempMap = {};     // course_id -> [student] 临时学员（仅本次考勤登记有效，不写入班级名单）
+    let teachersCache = [];  // 教师选项缓存（来自教师管理）
+    let classPrefs = {};  // course_id -> {teacher, start_time, end_time, date} 班级卡下拉当前选择
+    let mkStudent = null; // 补考勤已选学生 {id, name, student_no}
+
+    // 权限标志（服务端下发）
+    const PERMS = {
+      save: {{ can('attendance.save') | tojson }},
+      delete: {{ can('attendance.delete') | tojson }},
+      export: {{ can('attendance.export') | tojson }},
+      batch: {{ can('attendance.batch') | tojson }},
+    };
+
+    // 数据加载放在最前面：即使后续绑定出现异常，考勤登记数据也已拉取
+    document.addEventListener('DOMContentLoaded', () => {
+      loadCourses();        // 拉取班级后再加载该日考勤记录并渲染
+      loadTeachersCache();  // 教师选项（班级卡教师下拉 / 补考勤弹窗）
+
+      try {
+        initPage();
+      } catch (err) {
+        console.error('考勤页面初始化出错:', err);
+        showToast('页面初始化出错，请按 Ctrl+F5 强制刷新后重试', 'error');
+      }
+    });
+
+    function initPage() {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      $('attDate').value = todayStr;
+      // 记录查询默认范围放宽到一年前，保证历史考勤也能直接查到
+      const past = new Date(Date.now() - 364 * 86400000);
+      $('startDate').value = `${past.getFullYear()}-${pad(past.getMonth() + 1)}-${pad(past.getDate())}`;
+      $('endDate').value = todayStr;
+      $('mkStart').value = $('startDate').value;
+      $('mkEnd').value = todayStr;
+
+      // 选项卡切换
+      document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+        $('tab-' + t.dataset.tab).style.display = '';
+        if (t.dataset.tab === 'history') loadHistory();
+        if (t.dataset.tab === 'makeup') loadMakeup();
+      }));
+
+      $('attDate').addEventListener('change', () => { tempMap = {}; loadRegister(); });
+      $('queryBtn').addEventListener('click', loadHistory);
+      // 不限日期：清空日期范围后立即查询全部考勤记录
+      $('historyAllBtn').addEventListener('click', () => {
+        $('startDate').value = '';
+        $('endDate').value = '';
+        loadHistory();
+      });
+      if ($('exportBtn')) $('exportBtn').addEventListener('click', exportHistory);
+
+      // 补考勤事件
+      $('mkQueryBtn').addEventListener('click', loadMakeup);
+      if ($('mkAddBtn')) $('mkAddBtn').addEventListener('click', openMakeupModal);
+      $('mkClose').addEventListener('click', closeMakeupModal);
+      $('mkCancel').addEventListener('click', closeMakeupModal);
+      $('mkSave').addEventListener('click', saveMakeup);
+      $('mkCourse').addEventListener('change', onMkCourseChange);
+      let mkStuTimer = null;
+      $('mkStuSearch').addEventListener('input', () => {
+        clearTimeout(mkStuTimer);
+        mkStuTimer = setTimeout(() => searchMkStudents($('mkStuSearch').value.trim()), 250);
+      });
+
+      // 记录查询：状态多选筛选（点击选中/再点取消，不选 = 全部状态）
+      document.querySelectorAll('#statusPills .status-btn').forEach(b =>
+        b.addEventListener('click', () => b.classList.toggle('on')));
+
+      // 批量修改查询结果（仅管理员 / 校长 / 教务，模板已按权限裁剪 DOM）
+      initHisEdit();
+    }
+
+    // 批量修改弹窗的全部事件绑定：无权限角色页面内不存在这些元素，直接跳过
+    function initHisEdit() {
+      if (!$('hisEditOverlay') || !$('hisEditBtn')) return;
+      document.querySelectorAll('#heStatusGroup .status-btn').forEach(b =>
+        b.addEventListener('click', () => {
+          const on = b.classList.contains('on');
+          document.querySelectorAll('#heStatusGroup .status-btn').forEach(x => x.classList.remove('on'));
+          if (!on) b.classList.add('on');   // 再点同一项 = 取消状态修改
+        }));
+      $('hisEditClose').addEventListener('click', closeHisEditModal);
+      $('heCancel').addEventListener('click', closeHisEditModal);
+      $('heSave').addEventListener('click', saveHisEdit);
+      $('hisEditBtn').addEventListener('click', openHisEditModal);
+      $('heAllBtn').addEventListener('click', () => renderHeList(historyRecords.map(() => true)));
+      $('heNoneBtn').addEventListener('click', () => renderHeList(historyRecords.map(() => false)));
+      $('heInvertBtn').addEventListener('click', () => renderHeList(hePicked.map(v => !v)));
+    }
+
+    async function loadTeachersCache() {
+      try {
+        const res = await fetch('/api/teachers');
+        teachersCache = await res.json();
+        renderRegister();   // 教师列表就绪后刷新班级卡的教师下拉
+      } catch (err) { /* 教师列表加载失败时，下拉仅显示课程自带教师 */ }
+    }
+
+    // ---------- 考勤登记 ----------
+    // 星期词表（兼容「星期X / 周X」写法）：索引 0=周一 … 6=周日
+    const WD_WORDS = [
+      ['星期一', '周一'], ['星期二', '周二'], ['星期三', '周三'],
+      ['星期四', '周四'], ['星期五', '周五'], ['星期六', '周六'],
+      ['星期日', '星期天', '周日', '周天'],
+    ];
+
+    function weekdayIdx(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      return isNaN(d.getTime()) ? -1 : (d.getDay() + 6) % 7;
+    }
+
+    // 判定班级在指定日期是否有课：
+    // 1) 考勤日期在开课日期 ~ 结课日期范围内；2) 上课时间 schedule 含当天星期
+    function hasClassOn(c, dateStr) {
+      if (!dateStr || weekdayIdx(dateStr) < 0) return false;
+      if (c.start_date && dateStr < c.start_date) return false;
+      if (c.end_date && dateStr > c.end_date) return false;
+      const sch = String(c.schedule || '');
+      // 无法解析出任何星期信息的课程无法判定是否排课，不展示
+      if (!WD_WORDS.some(ws => ws.some(w => sch.includes(w)))) return false;
+      return WD_WORDS[weekdayIdx(dateStr)].some(w => sch.includes(w));
+    }
+
+    // 当天有课的班级（考勤日期过滤结果）
+    function todayClasses() {
+      return courses.filter(c => hasClassOn(c, $('attDate').value));
+    }
+
+    // 当天全部有课班级的学员去重集合（同一学生报多个班，考勤一人一天只一条）
+    function scopedStudents() {
+      const seen = new Set();
+      const out = [];
+      todayClasses().forEach(c => (c.students || []).forEach(s => {
+        if (!seen.has(s.id)) { seen.add(s.id); out.push(s); }
+      }));
+      return out;
+    }
+
+    async function loadCourses() {
+      try {
+        const res = await fetch('/api/courses');
+        courses = await res.json();
+      } catch (err) {
+        showToast('班级加载失败，请检查服务器连接', 'error');
+      }
+      await loadRegister();
+    }
+
+    async function loadRegister() {
+      const date = $('attDate').value;
+      if (!date) { $('classList').innerHTML = ''; return; }
+      try {
+        const res = await fetch('/api/attendance?date=' + date);
+        const records = await res.json();
+        selections = {};
+        lessonMap = {};                       // 换日期后重新开始
+        const lessonByCourse = {};            // 课程名称 -> 已保存的本节课名称
+        const prefByCourse = {};              // 课程名称 -> 已保存的教师/时间段
+        records.forEach(r => {
+          selections[r.student_id] = { status: r.status, remark: r.remark || '' };
+          if (r.course_name) {
+            lessonByCourse[r.course_name] = r.lesson || '';
+            if (!(r.course_name in prefByCourse)) {
+              prefByCourse[r.course_name] = {
+                teacher: r.teacher || '',
+                start_time: r.start_time || '',
+                end_time: r.end_time || '',
+              };
+            }
+          }
+        });
+        // 已保存记录里带有本节课名称时，回填到对应班级的课程栏
+        courses.forEach(c => {
+          if (c.name in lessonByCourse) lessonMap[c.id] = lessonByCourse[c.name];
+          if (c.name in prefByCourse) {
+            classPrefs[c.id] = { ...(classPrefs[c.id] || {}), ...prefByCourse[c.name] };
+          }
+        });
+        renderRegister();
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function renderRegister() {
+      const box = $('classList');
+      box.innerHTML = '';
+      const list = todayClasses();
+      $('regEmpty').style.display = list.length ? 'none' : 'flex';
+
+      list.forEach(c => {
+        const members = [...(c.students || []), ...(tempMap[c.id] || [])];
+        const tempIds = new Set((tempMap[c.id] || []).map(s => s.id));
+        // 班级卡下拉默认值：来自课程管理的数据（教师 / 上课时间 / 上课日期）
+        const [schStart, schEnd] = parseScheduleTime(c.schedule);
+        const pref = {
+          teacher: c.teacher || '', start_time: schStart, end_time: schEnd,
+          date: $('attDate').value, ...(classPrefs[c.id] || {}),
+        };
+        const folded = foldMap[c.id] !== false;   // 默认收起，并记忆展开/收起操作
+        const card = document.createElement('div');
+        card.className = 'class-card' + (folded ? '' : ' open');
+        card.innerHTML = `
+          <div class="class-head">
+            <div class="class-title">
+              <span class="class-name">${escapeHtml(c.name)}</span>
+              <span class="class-count">${members.length} 人</span>
+              <button class="fold-btn" type="button">
+                <span class="fold-text">${folded ? '展开学员名单' : '收起学员名单'}</span>
+                <svg class="fold-arrow" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="class-meta">
+              ${PERMS.save ? `
+              <span class="ci"><i>教师</i>
+                <select class="ci-select" data-pref="teacher" data-cid="${c.id}">${teacherOptionsHtml(pref.teacher)}</select>
+              </span>
+              <span class="ci"><i>上课时间</i>
+                <select class="ci-select" data-pref="start_time" data-cid="${c.id}">${timeOptionsHtml(pref.start_time)}</select>
+                <span class="ci-sep">至</span>
+                <select class="ci-select" data-pref="end_time" data-cid="${c.id}">${timeOptionsHtml(pref.end_time)}</select>
+              </span>
+              <span class="ci"><i>上课日期</i>
+                <select class="ci-select" data-pref="date" data-cid="${c.id}">${dateOptionsHtml(c, pref.date)}</select>
+              </span>` : `
+              <span class="ci"><i>教师</i><b>${escapeHtml(pref.teacher || '未安排')}</b></span>
+              <span class="ci"><i>上课时间</i><b>${escapeHtml((pref.start_time || '—') + (pref.end_time ? '~' + pref.end_time : ''))}</b></span>
+              <span class="ci"><i>上课日期</i><b>${escapeHtml(pref.date || '—')}</b></span>`}
+              <span class="ci"><i>上课人数</i><b>${members.length}</b></span>
+            </div>
+            <div class="lesson-bar">
+              <span class="ci"><i>课程</i><b>${escapeHtml(c.name)}</b></span>
+              ${PERMS.save ? `
+              <label class="ci ci-lesson"><i>本节课名称</i>
+                <input type="text" class="lesson-input" data-cid="${c.id}"
+                       value="${escapeHtml(lessonMap[c.id] || '')}"
+                       placeholder="填写本节课名称，将默认写入本班每位学员的考勤记录"
+                       maxlength="100">
+              </label>` : `
+              <span class="ci"><i>本节课名称</i><b>${escapeHtml(lessonMap[c.id] || '—')}</b></span>`}
+            </div>
+          </div>
+          <div class="class-body"></div>`;
+
+        // 学员名单折叠/展开（局部切换，不触发整表重渲染）
+        card.querySelector('.fold-btn').addEventListener('click', () => {
+          const open = card.classList.toggle('open');
+          foldMap[c.id] = !open;
+          card.querySelector('.fold-text').textContent = open ? '收起学员名单' : '展开学员名单';
+        });
+        // 本节课名称：随时记录到 lessonMap，保存时随学员考勤记录一并写入（只读角色无输入框）
+        const lessonInput = card.querySelector('.lesson-input');
+        if (lessonInput) lessonInput.addEventListener('input', (e) => {
+          lessonMap[Number(e.target.dataset.cid)] = e.target.value;
+        });
+        // 班级卡下拉（教师 / 上课时间 / 上课日期）：选择变化写入 classPrefs
+        card.querySelectorAll('.ci-select').forEach(sel => sel.addEventListener('change', (e) => {
+          const cid = Number(e.target.dataset.cid);
+          classPrefs[cid] = classPrefs[cid] || {};
+          classPrefs[cid][e.target.dataset.pref] = e.target.value;
+        }));
+        const body = card.querySelector('.class-body');
+
+        if (!members.length) {
+          const tip = document.createElement('div');
+          tip.className = 'class-empty';
+          tip.textContent = '本班暂无报名学员，可点击下方「添加临时学员」或到「课程管理」为课程添加学员';
+          body.appendChild(tip);
+        } else {
+          const wrap = document.createElement('div');
+          wrap.className = 'class-table';
+          wrap.innerHTML = `
+            <table class="att-table">
+              <thead>
+                <tr>
+                  <th>学号</th>
+                  <th>学员</th>
+                  <th>考勤状态</th>
+                  <th class="th-remark">备注</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>`;
+          const tbody = wrap.querySelector('tbody');
+          members.forEach(s => {
+            const sel = selections[s.id];
+            const cur = STATUS[sel?.status];
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td class="td-id">${escapeHtml(s.student_no || '')}</td>
+              <td class="td-name">
+                ${s.photo
+                  ? `<img class="avatar-img" src="/uploads/photos/${encodeURIComponent(s.photo)}" alt="">`
+                  : `<span class="avatar ${s.gender === '女' ? 'avatar-female' : ''}">${escapeHtml(String(s.name || '').slice(0, 1))}</span>`}
+                ${escapeHtml(s.name)}${tempIds.has(s.id) ? '<span class="temp-badge">临时</span>' : ''}
+              </td>
+              <td>
+                ${PERMS.save ? `
+                <div class="status-group" data-sid="${s.id}">
+                  ${Object.entries(STATUS).map(([k, v]) =>
+                    `<button type="button" class="status-btn ${v.cls}${sel?.status === k ? ' on' : ''}" data-status="${k}">${v.label}</button>`).join('')}
+                </div>` : (cur
+                  ? `<span class="status-tag ${cur.cls}">${cur.label}</span>`
+                  : '<span class="td-sub">未登记</span>')}
+              </td>
+              <td>${PERMS.save
+                ? `<input type="text" class="remark-input" data-sid="${s.id}"
+                         value="${escapeHtml(sel?.remark || '')}" placeholder="备注（选填）" maxlength="100">`
+                : `<span class="td-remark">${escapeHtml(sel?.remark || '—')}</span>`}</td>`;
+
+            const remarkInput = tr.querySelector('.remark-input');
+            if (remarkInput) remarkInput.addEventListener('input', (e) => {
+              const sid = Number(e.target.dataset.sid);
+              if (selections[sid]) selections[sid].remark = e.target.value;
+            });
+            tbody.appendChild(tr);
+          });
+          // 点击选择考勤状态；再点同一状态即取消登记（无保存权限时状态为只读）
+          if (PERMS.save) tbody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.status-btn');
+            if (!btn) return;
+            const sid = Number(btn.closest('.status-group').dataset.sid);
+            if (selections[sid]?.status === btn.dataset.status) {
+              delete selections[sid];
+            } else {
+              selections[sid] = { status: btn.dataset.status, remark: selections[sid]?.remark || '' };
+            }
+            renderRegister();   // 同一学员报多个班时状态联动 + 刷新汇总
+          });
+          body.appendChild(wrap);
+        }
+
+        // ---------- 班级操作栏：仅可保存考勤的角色显示（全部出勤 / 保存 / 临时学员） ----------
+        if (PERMS.save) {
+        const actions = document.createElement('div');
+        actions.className = 'class-actions';
+        actions.innerHTML = `
+          <button class="btn btn-ghost btn-sm" data-allpresent type="button">全部出勤</button>
+          <button class="btn btn-primary btn-sm" data-save type="button">保存本班考勤</button>
+          <button class="btn btn-ghost btn-sm" data-addtemp type="button">+ 添加临时学员</button>
+          <div class="temp-search" style="display:none">
+            <input type="text" class="temp-search-input" placeholder="输入姓名 / 学号搜索学生档案（已排除本班学员）..." autocomplete="off">
+            <div class="temp-search-results"></div>
+          </div>`;
+        // 本班全部出勤：将本班学员（含临时）统一设为出勤
+        actions.querySelector('[data-allpresent]').addEventListener('click', () => {
+          if (!members.length) { showToast('本班暂无学员', 'error'); return; }
+          members.forEach(s => {
+            selections[s.id] = { status: 'present', remark: selections[s.id]?.remark || '' };
+          });
+          renderRegister();
+        });
+        const saveBtnEl = actions.querySelector('[data-save]');
+        if (saveBtnEl) saveBtnEl.addEventListener('click', () => saveAttendance(c.id, saveBtnEl));
+
+        const tempSearch = actions.querySelector('.temp-search');
+        const tempInput = actions.querySelector('.temp-search-input');
+        const tempResults = actions.querySelector('.temp-search-results');
+        const addTempBtn = actions.querySelector('[data-addtemp]');
+        if (addTempBtn) addTempBtn.addEventListener('click', () => {
+          const show = tempSearch.style.display === 'none';
+          tempSearch.style.display = show ? '' : 'none';
+          if (show) { tempInput.focus(); if (!tempInput.value) renderTempTips(tempResults); }
+        });
+        let tempTimer = null;
+        tempInput.addEventListener('input', () => {
+          clearTimeout(tempTimer);
+          tempTimer = setTimeout(() => searchTempStudents(c, tempInput.value.trim(), tempResults), 250);
+        });
+        body.appendChild(actions);
+        }   // /PERMS.save：操作栏仅对可保存考勤的角色渲染
+
+        box.appendChild(card);
+      });
+
+      // 汇总：当天全部有课班级的学员（去重后统计）
+      const scope = scopedStudents();
+      if (!scope.length) { $('regSummary').innerHTML = ''; return; }
+      const counts = { present: 0, late: 0, leave: 0, absent: 0 };
+      let marked = 0;
+      scope.forEach(s => {
+        const v = selections[s.id];
+        if (v) { counts[v.status]++; marked++; }
+      });
+      const total = scope.length;
+      $('regSummary').innerHTML = `
+        <div class="sum-chip">当日有课班级 <b>${list.length}</b> 个</div>
+        <div class="sum-chip">已登记 <b>${marked}</b> / ${total} 人</div>
+        ${Object.entries(STATUS).map(([k, v]) =>
+          `<div class="sum-chip sum-${k}">${v.label} <b>${counts[k]}</b></div>`).join('')}
+        <div class="sum-chip sum-none">未登记 <b>${total - marked}</b></div>`;
+    }
+
+    // 按班级保存考勤：只保存该班学员（正式 + 临时）中已选择状态的记录；
+    // 日期 / 教师 / 时间段取班级卡下拉的当前选择（默认为课程管理数据与考勤日期）
+    async function saveAttendance(courseId, btn) {
+      const pref = classPrefs[courseId] || {};
+      const date = pref.date || $('attDate').value;
+      if (!date) { showToast('请选择考勤日期', 'error'); return; }
+      const cls = todayClasses().find(c => c.id === courseId);
+      if (!cls) { showToast('班级不存在或当天无课', 'error'); return; }
+      const memberIds = new Set([...(cls.students || []), ...(tempMap[cls.id] || [])].map(s => s.id));
+      const records = Object.entries(selections)
+        .filter(([sid]) => memberIds.has(Number(sid)))
+        .map(([sid, v]) => ({
+          student_id: Number(sid),
+          status: v.status,
+          remark: (v.remark || '').trim(),
+          course_name: cls.name,                       // 课程名称
+          lesson: (lessonMap[cls.id] || '').trim(),     // 本节课上课名称
+          teacher: (pref.teacher ?? cls.teacher) || '', // 上课老师（班级卡下拉）
+          start_time: pref.start_time || '',            // 课程开始时间
+          end_time: pref.end_time || '',                // 课程结束时间
+        }));
+      if (!records.length) { showToast('请先为本班学员选择考勤状态', 'error'); return; }
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, records }),
+        });
+        const r = await res.json();
+        if (!res.ok) { showToast(r.error || '保存失败', 'error'); return; }
+        showToast(r.message, 'success');
+        loadRegister();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // ---------- 临时学员（仅本次考勤登记有效，不写入课程学员名单） ----------
+    function renderTempTips(box, msg) {
+      box.innerHTML = `<div class="temp-tip">${msg || '输入关键字搜索学生档案，点击结果添加为本班临时学员'}</div>`;
+    }
+
+    async function searchTempStudents(course, kw, box) {
+      if (!kw) { renderTempTips(box); return; }
+      try {
+        const res = await fetch('/api/students?keyword=' + encodeURIComponent(kw) + '&per_page=20');
+        const data = await res.json();
+        // 排除本班已有学员（正式 + 已添加的临时）
+        const existing = new Set([...(course.students || []), ...(tempMap[course.id] || [])].map(s => s.id));
+        const rows = (data.students || []).filter(s => !existing.has(s.id));
+        if (!rows.length) { renderTempTips(box, '没有找到可添加的学生（已排除本班学员）'); return; }
+        box.innerHTML = '';
+        rows.forEach(s => {
+          const item = document.createElement('div');
+          item.className = 'temp-result';
+          item.innerHTML = `
+            <span class="tr-avatar avatar ${s.gender === '女' ? 'avatar-female' : ''}">${escapeHtml(String(s.name || '').slice(0, 1))}</span>
+            <span class="tr-name">${escapeHtml(s.name)}</span>
+            <span class="tr-info">${escapeHtml(s.student_no || '')}${s.school ? ' · ' + escapeHtml(s.school) : ''}</span>`;
+          item.addEventListener('click', () => {
+            (tempMap[course.id] = tempMap[course.id] || []).push(s);
+            showToast(`已将「${s.name}」添加为本班临时学员`, 'success');
+            renderRegister();
+          });
+          box.appendChild(item);
+        });
+      } catch (err) {
+        renderTempTips(box, '搜索失败，请检查服务器连接');
+      }
+    }
+
+    // ---------- 补考勤 ----------
+    function openMakeupModal() {
+      mkStudent = null;
+      $('mkStuPicked').style.display = 'none';
+      $('mkStuSearch').value = '';
+      $('mkStuResults').innerHTML = '';
+      $('mkCourse').innerHTML = '<option value="">— 请选择课程 —</option>' +
+        courses.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      $('mkDate').value = $('attDate').value || '';
+      $('mkStartTime').innerHTML = timeOptionsHtml('');
+      $('mkEndTime').innerHTML = timeOptionsHtml('');
+      $('mkLesson').value = '';
+      $('mkTeacher').innerHTML = teacherOptionsHtml('');
+      $('mkStatus').value = 'present';
+      $('mkRemark').value = '';
+      $('mkOverlay').style.display = 'flex';
+      setTimeout(() => $('mkOverlay').classList.add('show'), 10);
+      $('mkStuSearch').focus();
+    }
+
+    function closeMakeupModal() {
+      $('mkOverlay').classList.remove('show');
+      $('mkOverlay').style.display = 'none';
+    }
+
+    // 选课程后联动：默认带入课程老师与上课时间段
+    function onMkCourseChange() {
+      const c = courses.find(x => x.id === Number($('mkCourse').value));
+      if (!c) return;
+      $('mkTeacher').innerHTML = teacherOptionsHtml(c.teacher || '');
+      const [st, et] = parseScheduleTime(c.schedule);
+      $('mkStartTime').innerHTML = timeOptionsHtml(st);
+      $('mkEndTime').innerHTML = timeOptionsHtml(et);
+    }
+
+    async function searchMkStudents(kw) {
+      const box = $('mkStuResults');
+      if (!kw) { box.innerHTML = ''; return; }
+      try {
+        const res = await fetch('/api/students?keyword=' + encodeURIComponent(kw) + '&per_page=20');
+        const data = await res.json();
+        const rows = data.students || [];
+        if (!rows.length) {
+          box.innerHTML = '<div class="temp-tip">没有找到匹配的学生</div>';
+          return;
+        }
+        box.innerHTML = '';
+        rows.forEach(s => {
+          const item = document.createElement('div');
+          item.className = 'mk-stu-item';
+          item.innerHTML = `<b>${escapeHtml(s.name)}</b><span class="si">${escapeHtml(s.student_no || '')}${s.school ? ' · ' + escapeHtml(s.school) : ''}</span>`;
+          item.addEventListener('click', () => {
+            mkStudent = s;
+            $('mkStuPicked').innerHTML = `已选学生：<b>${escapeHtml(s.name)}</b>（${escapeHtml(s.student_no || '无学号')}）`;
+            $('mkStuPicked').style.display = '';
+            box.innerHTML = '';
+            $('mkStuSearch').value = '';
+          });
+          box.appendChild(item);
+        });
+      } catch (err) {
+        box.innerHTML = '<div class="temp-tip">搜索失败，请检查服务器连接</div>';
+      }
+    }
+
+    async function saveMakeup() {
+      if (!mkStudent) { showToast('请先搜索并选择学生', 'error'); return; }
+      const course = courses.find(x => x.id === Number($('mkCourse').value));
+      if (!course) { showToast('请选择课程', 'error'); return; }
+      const date = $('mkDate').value;
+      if (!date) { showToast('请选择上课日期', 'error'); return; }
+      const body = {
+        date,
+        records: [{
+          student_id: mkStudent.id,
+          status: $('mkStatus').value,
+          remark: $('mkRemark').value.trim(),
+          course_name: course.name,
+          lesson: $('mkLesson').value.trim(),
+          teacher: $('mkTeacher').value,
+          start_time: $('mkStartTime').value,
+          end_time: $('mkEndTime').value,
+          source: 'makeup',
+        }],
+      };
+      $('mkSave').disabled = true;
+      try {
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const r = await res.json();
+        if (!res.ok) { showToast(r.error || '保存失败', 'error'); return; }
+        showToast('补考勤已保存', 'success');
+        closeMakeupModal();
+        loadMakeup();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('mkSave').disabled = false;
+      }
+    }
+
+    async function loadMakeup() {
+      const params = new URLSearchParams({
+        start: $('mkStart').value || '',
+        end: $('mkEnd').value || '',
+        source: 'makeup',
+      });
+      try {
+        const res = await fetch('/api/attendance/history?' + params);
+        if (!res.ok) { showToast('查询失败', 'error'); return; }
+        const data = await res.json();
+        renderMakeup(data.records);
+      } catch (err) {
+        showToast('查询失败', 'error');
+      }
+    }
+
+    function renderMakeup(records) {
+      const tbody = $('mkTbody');
+      tbody.innerHTML = '';
+      $('mkEmpty').style.display = records.length ? 'none' : 'flex';
+      records.forEach(r => {
+        const st = STATUS[r.status] || { label: r.status, cls: '' };
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="td-date">${r.date}</td>
+          <td class="td-id">${escapeHtml(r.student_no || '')}</td>
+          <td class="td-name">${escapeHtml(r.name)}</td>
+          <td class="td-sub">${escapeHtml(r.course_name || '—')}</td>
+          <td class="td-sub">${escapeHtml(r.lesson || '—')}</td>
+          <td class="td-sub">${r.start_time ? escapeHtml(r.start_time + (r.end_time ? '~' + r.end_time : '')) : '—'}</td>
+          <td class="td-sub">${escapeHtml(r.teacher || '—')}</td>
+          <td><span class="status-tag ${st.cls}">${st.label}</span></td>
+          <td class="td-remark">${escapeHtml(r.remark || '—')}</td>
+          <td class="td-actions">${PERMS.delete ? `<button class="btn-link btn-link-danger" data-id="${r.id}" type="button">删除</button>` : ''}</td>`;
+        const delBtn = tr.querySelector('.btn-link-danger');
+        if (delBtn) delBtn.addEventListener('click', async () => {
+          if (!confirm(`确定删除 ${r.date} ${r.name} 的补考勤记录吗？`)) return;
+          const res = await fetch('/api/attendance/' + r.id, { method: 'DELETE' });
+          if (!res.ok) { showToast('删除失败', 'error'); return; }
+          showToast('已删除', 'success');
+          loadMakeup();
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------- 下拉选项生成 ----------
+    // 时间下拉：08:00 - 21:00，每 30 分钟一档
+    function timeOptionsHtml(selected) {
+      let html = '<option value="">—</option>';
+      for (let h = 8; h <= 21; h++) {
+        for (const m of [0, 30]) {
+          const v = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          html += `<option value="${v}"${v === selected ? ' selected' : ''}>${v}</option>`;
+        }
+      }
+      return html;
+    }
+
+    // 从课程上课时间文本解析时间段（如 "星期一、三 09:00-11:00"）
+    function parseScheduleTime(sch) {
+      const m = String(sch || '').match(/(\d{1,2}:\d{2})\s*[-~～至]\s*(\d{1,2}:\d{2})/);
+      return m ? [m[1], m[2]] : ['', ''];
+    }
+
+    // 课程排课周期内符合上课星期的日期列表（用于"上课日期"下拉）
+    function classDates(c) {
+      const out = [];
+      if (!c.start_date) return out;
+      const d = new Date(c.start_date + 'T00:00:00');
+      const max = new Date(Date.now() + 30 * 86400000);   // 最多枚举到 30 天后
+      const pad = n => String(n).padStart(2, '0');
+      for (let i = 0; i < 400 && out.length < 120; i++) {
+        const ds = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        if (c.end_date && ds > c.end_date) break;
+        if (d > max) break;
+        if (hasClassOn(c, ds)) out.push(ds);
+        d.setDate(d.getDate() + 1);
+      }
+      return out;
+    }
+
+    function dateOptionsHtml(c, selected) {
+      const dates = classDates(c);
+      if (selected && !dates.includes(selected)) dates.unshift(selected);
+      if (!dates.length) dates.push(selected || '');
+      return dates.map(d =>
+        `<option value="${d}"${d === selected ? ' selected' : ''}>${d || '—'}</option>`).join('');
+    }
+
+    // 教师下拉：选项来自教师管理，默认选中传入值（未建档的兜底保留）
+    function teacherOptionsHtml(selected) {
+      let html = '<option value="">未安排</option>';
+      teachersCache.forEach(t => {
+        html += `<option value="${escapeHtml(t.name)}"${t.name === selected ? ' selected' : ''}>` +
+          `${escapeHtml(t.name)}${t.status === '离职' ? '（离职）' : ''}</option>`;
+      });
+      if (selected && !teachersCache.some(t => t.name === selected)) {
+        html += `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}（未建档）</option>`;
+      }
+      return html;
+    }
+
+    // ---------- 记录查询 ----------
+    // 记住最近一次成功查询的条件与条数：导出的数据只来自这次查询
+    let lastQuery = null;
+    let historyRecords = [];   // 最近一次查询出的记录：供「修改查询信息状态」使用
+
+    async function loadHistory() {
+      const params = new URLSearchParams({
+        start: $('startDate').value || '',
+        end: $('endDate').value || '',
+        status: [...document.querySelectorAll('#statusPills .status-btn.on')]
+          .map(b => b.dataset.status).join(','),
+        keyword: $('historyKeyword').value.trim(),
+      });
+      try {
+        const res = await fetch('/api/attendance/history?' + params);
+        if (!res.ok) { showToast('查询失败', 'error'); return; }
+        const data = await res.json();
+        renderHistory(data.records, data.stats);
+        lastQuery = { params: params.toString(), count: data.records.length };
+      } catch (err) {
+        showToast('查询失败', 'error');
+      }
+    }
+
+    // 导出 Excel：严格使用最近一次“查询”的条件，导出内容与页面查询结果逐条一致；
+    // 筛选条件改动后未重新查询的，不影响导出内容（导出的仍是已查询出的记录）
+    async function exportHistory() {
+      if (!lastQuery) { showToast('请先点击“查询”获取记录', 'error'); return; }
+      $('exportBtn').disabled = true;
+      try {
+        const res = await fetch('/api/attendance/export?' + lastQuery.params);
+        if (!res.ok) { showToast('导出失败', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const end = new URLSearchParams(lastQuery.params).get('end');
+        a.download = '考勤记录_' + (end || new Date().toISOString().slice(0, 10)).replace(/-/g, '') + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        showToast(`已导出查询到的 ${lastQuery.count} 条记录`, 'success');
+      } catch (err) {
+        showToast('网络错误，导出失败', 'error');
+      } finally {
+        $('exportBtn').disabled = false;
+      }
+    }
+
+    function renderHistory(records, stats) {
+      const tbody = $('hisTbody');
+      tbody.innerHTML = '';
+      $('hisEmpty').style.display = records.length ? 'none' : 'flex';
+      historyRecords = records;
+
+      records.forEach(r => {
+        const tr = document.createElement('tr');
+        const st = STATUS[r.status] || { label: r.status, cls: '' };
+        tr.innerHTML = `
+          <td class="td-date">${r.date}</td>
+          <td class="td-id">${escapeHtml(r.student_no || '')}</td>
+          <td class="td-name">${escapeHtml(r.name)}</td>
+          <td class="td-sub">${escapeHtml(r.course_name || '—')}</td>
+          <td class="td-sub">${escapeHtml(r.lesson || '—')}</td>
+          <td class="td-sub">${r.start_time ? escapeHtml(r.start_time + (r.end_time ? '~' + r.end_time : '')) : '—'}</td>
+          <td class="td-sub">${escapeHtml(r.teacher || '—')}</td>
+          <td><span class="status-tag ${st.cls}">${st.label}</span></td>
+          <td class="td-remark">${escapeHtml(r.remark || '—')}</td>
+          <td class="td-actions">${PERMS.delete ? `<button class="btn-link btn-link-danger" data-id="${r.id}" type="button">删除</button>` : ''}</td>`;
+        const delBtn2 = tr.querySelector('.btn-link-danger');
+        if (delBtn2) delBtn2.addEventListener('click', async () => {
+          if (!confirm(`确定删除 ${r.date} ${r.name} 的考勤记录吗？`)) return;
+          const res = await fetch('/api/attendance/' + r.id, { method: 'DELETE' });
+          if (!res.ok) { showToast('删除失败', 'error'); return; }
+          showToast('已删除', 'success');
+          loadHistory();
+        });
+        tbody.appendChild(tr);
+      });
+
+      const rate = stats.total ? Math.round((stats.present + stats.late) / stats.total * 100) : 0;
+      $('hisSummary').innerHTML = `
+        <div class="sum-chip">记录 <b>${stats.total}</b> 条</div>
+        <div class="sum-chip sum-present">出勤 <b>${stats.present}</b></div>
+        <div class="sum-chip sum-late">迟到 <b>${stats.late}</b></div>
+        <div class="sum-chip sum-leave">请假 <b>${stats.leave}</b></div>
+        <div class="sum-chip sum-absent">缺勤 <b>${stats.absent}</b></div>
+        <div class="sum-chip sum-rate">到课率 <b>${rate}%</b></div>`;
+    }
+
+    // ---------- 记录查询：批量修改查询结果（状态 / 备注） ----------
+    // 打开弹窗：默认全选本次查询出的记录，不预选任何目标状态；
+    // 查询结果为空时同样打开并说明原因，便于判断是筛选问题还是数据问题
+    function openHisEditModal() {
+      const overlay = $('hisEditOverlay');
+      if (!overlay) { showToast('页面未加载完整，请按 Ctrl+F5 强制刷新后重试', 'error'); return; }
+      document.querySelectorAll('#heStatusGroup .status-btn').forEach(b => b.classList.remove('on'));
+      $('heRemark').value = '';
+      $('heClearRemark').checked = false;
+      renderHeList(historyRecords.map(() => true));
+      $('heTip').textContent = historyRecords.length
+        ? `本次查询共 ${historyRecords.length} 条记录（默认全选），可取消勾选后仅修改部分学员`
+        : '本次查询没有查到考勤记录：请确认上方日期范围与状态筛选后重新点击「查询」，再回到此处修改';
+      overlay.style.display = 'flex';
+      setTimeout(() => overlay.classList.add('show'), 10);
+    }
+
+    function closeHisEditModal() {
+      $('hisEditOverlay').classList.remove('show');
+      $('hisEditOverlay').style.display = 'none';
+    }
+
+    // 勾选状态数组与记录一一对应（true = 选中），行内多选框与表头联动
+    let hePicked = [];
+
+    function renderHeList(picked) {
+      hePicked = picked;
+      const box = $('heList');
+      box.innerHTML = '';
+      if (!historyRecords.length) {
+        box.innerHTML = '<div class="temp-tip">没有可修改的记录</div>';
+        updateHeCount();
+        return;
+      }
+      historyRecords.forEach((r, i) => {
+        const st = STATUS[r.status] || { label: r.status, cls: '' };
+        const row = document.createElement('label');
+        row.className = 'he-row';
+        row.innerHTML = `
+          <input type="checkbox" ${hePicked[i] ? 'checked' : ''} data-i="${i}">
+          <span class="he-date">${escapeHtml(r.date || '')}</span>
+          <span class="he-no">${escapeHtml(r.student_no || '')}</span>
+          <span class="he-name">${escapeHtml(r.name || '')}</span>
+          <span class="he-course">${escapeHtml(r.course_name || '—')}</span>
+          <span class="status-tag ${st.cls}">${st.label}</span>
+          <span class="he-remark">${escapeHtml(r.remark || '—')}</span>`;
+        row.querySelector('input').addEventListener('change', (e) => {
+          hePicked[Number(e.target.dataset.i)] = e.target.checked;
+          updateHeCount();
+        });
+        box.appendChild(row);
+      });
+      updateHeCount();
+    }
+
+    function updateHeCount() {
+      const n = hePicked.filter(Boolean).length;
+      $('heCount').textContent = `已选 ${n} / ${historyRecords.length} 条`;
+      $('heSave').disabled = n === 0;
+    }
+
+    async function saveHisEdit() {
+      const ids = historyRecords.filter((r, i) => hePicked[i]).map(r => r.id);
+      if (!ids.length) { showToast('请先勾选要修改的记录', 'error'); return; }
+      const status = document.querySelector('#heStatusGroup .status-btn.on')?.dataset.status || '';
+      const clearRemark = $('heClearRemark').checked;
+      const remark = $('heRemark').value.trim();
+      if (!status && !clearRemark && !remark) {
+        showToast('请选择要改的状态，或填写备注', 'error');
+        return;
+      }
+      // 未勾选清空且备注框为空时传 null = 保持原备注不变
+      const body = { ids, status, remark: (clearRemark || remark) ? (clearRemark ? '' : remark) : null };
+      $('heSave').disabled = true;
+      try {
+        const res = await fetch('/api/attendance/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const r = await res.json();
+        if (!res.ok) { showToast(r.error || '修改失败', 'error'); return; }
+        showToast(`${r.message}（状态：${status ? STATUS[status].label : '未改'}）`, 'success');
+        closeHisEditModal();
+        loadHistory();
+      } catch (err) {
+        showToast('网络错误，修改失败', 'error');
+      } finally {
+        $('heSave').disabled = false;
+      }
+    }
+
+    // ---------- 通用 ----------
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

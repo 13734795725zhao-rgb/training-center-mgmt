@@ -1,0 +1,75 @@
+/* ========== 系统设置页样式 ========== */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 24px;
+}
+.settings-tab {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all .2s;
+}
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.settings-panel { display: none; }
+.settings-panel.active { display: block; }
+
+.settings-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
+}
+.settings-card h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+
+.role-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.role-admin { background: var(--danger-light); color: var(--danger); }
+.role-principal { background: #f3e8ff; color: #7e22ce; }
+.role-staff { background: var(--info-light); color: var(--info); }
+.role-teacher { background: var(--success-light); color: var(--success); }
+.role-viewer { background: #f1f5f9; color: var(--text-secondary); }
+
+/* 唯一角色标记（管理员 / 校长全系统各只有一个） */
+.role-unique {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.backup-item:last-child { border-bottom: none; }
+.backup-info { display: flex; flex-direction: column; gap: 2px; }
+.backup-filename { font-size: 14px; font-weight: 500; }
+.backup-meta { font-size: 12px; color: var(--text-muted); }
+
+.log-row { font-size: 13px; }
+.log-row td { padding: 8px 12px; }
+.log-action { font-weight: 600; }
+
+.form-row { display: flex; gap: 16px; }
+.form-row .form-group { flex: 1; }

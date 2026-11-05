@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>编辑简历 - {{ student.name }}</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/resume_edit.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="re-topbar">
+    <div class="re-brand">
+      <h1>编辑简历</h1>
+      <span class="re-student">{{ student.name }}（学号 {{ student.student_no or student.id }}）</span>
+    </div>
+    <div class="re-actions">
+      <a class="btn btn-primary" href="/resume/{{ student.id }}">返回简历</a>
+    </div>
+  </header>
+
+  <main class="re-container">
+    <div class="re-tip">
+      上方「档案信息」「监护人」「证件照」直接来自学生档案，修改后简历实时同步（简历中不显示身份证号、报读科目）。
+      下方为简历正文栏目，<strong>不会自动生成</strong>，需由工作人员在此逐项填写；未填写的栏目在简历中不显示或显示「待填写」。
+      栏目顺序：教育经历 → 培训经历 → 项目经验 → 获奖与荣誉（证书与竞赛获奖合并）→ 社会实践与活动经历 →
+      兴趣爱好与性格特点 → 作品展示。
+      「兴趣爱好与性格特点」下的<b>兴趣爱好、性格描述、自我评价</b>三项均为<b>纯文字文本框</b>，只填写文字描述、不上传资料；
+      其余栏目中的每个条目均可上传任意格式资料（单个不超过 50MB，每条最多 10 个）。
+      {% if not can_edit_profile %}
+      <br><b class="re-tip-warn">您的角色（教师）可填写以上简历内容，但「档案信息」「监护人」为只读，如需修改请联系教务。</b>
+      {% endif %}
+    </div>
+
+    <!-- 档案信息（可编辑，与学生档案实时同步） -->
+    <section class="re-section">
+      <div class="re-section-head">
+        <h2>档案信息<span class="re-count">{% if can_edit_profile %}与学生档案实时同步{% else %}只读，如需修改请联系教务{% endif %}</span></h2>
+        {% if can_edit_profile %}
+        <button class="btn btn-primary btn-sm" id="profileSave" type="button">保存档案信息</button>
+        {% endif %}
+      </div>
+      {% if not can_edit_profile %}
+    <div class="re-readonly-tip">您的角色可填写简历内容，但不可修改学生档案基本信息。</div>
+    {% endif %}
+      <div class="form-grid">
+        <div class="form-item">
+          <label>姓名 <span class="required">*</span></label>
+          <input type="text" id="p_name" maxlength="30" value="{{ student.name or '' }}" {% if not can_edit_profile %}readonly{% endif %}>
+        </div>
+        <div class="form-item">
+          <label>性别</label>
+          <select id="p_gender" {% if not can_edit_profile %}disabled{% endif %}>
+            <option value="男">男</option>
+            <option value="女">女</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label>出生日期</label>
+          <input type="date" id="p_birthdate" value="{{ student.birthdate or '' }}" {% if not can_edit_profile %}readonly{% endif %}>
+        </div>
+        <div class="form-item">
+          <label>联系电话</label>
+          <input type="tel" id="p_phone" maxlength="20" value="{{ student.phone or '' }}" {% if not can_edit_profile %}readonly{% endif %}>
+        </div>
+        <div class="form-item">
+          <label>报读科目</label>
+          <select id="p_course" {% if not can_edit_profile %}disabled{% endif %}></select>
+        </div>
+        <div class="form-item">
+          <label>就读学校</label>
+          <input type="text" id="p_school" maxlength="50" value="{{ student.school or '' }}" {% if not can_edit_profile %}readonly{% endif %}>
+        </div>
+        <div class="form-item">
+          <label>年级</label>
+          <select id="p_grade" {% if not can_edit_profile %}disabled{% endif %}>
+            <option value="">— 未填写 —</option>
+            <option value="学前">学前</option>
+            <option value="一年级">一年级</option>
+            <option value="二年级">二年级</option>
+            <option value="三年级">三年级</option>
+            <option value="四年级">四年级</option>
+            <option value="五年级">五年级</option>
+            <option value="六年级">六年级</option>
+            <option value="初一">初一</option>
+            <option value="初二">初二</option>
+            <option value="初三">初三</option>
+            <option value="高一">高一</option>
+            <option value="高二">高二</option>
+            <option value="高三">高三</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="form-item form-item-full">
+          <label>家庭住址</label>
+          <input type="text" id="p_address" maxlength="100" value="{{ student.address or '' }}" {% if not can_edit_profile %}readonly{% endif %}>
+        </div>
+      </div>
+
+      <div class="section-title">
+        监护人
+        <span class="section-hint">{% if can_edit_profile %}姓名 / 电话 / 微信为一组，可添加多组{% else %}如需修改请联系教务{% endif %}</span>
+      </div>
+      <div id="guardianList"></div>
+      {% if can_edit_profile %}
+      <button type="button" class="btn-add-guardian" id="addGuardianBtn">+ 添加监护人</button>
+      {% endif %}
+    </section>
+
+    <!-- 证件照与学生照片 -->
+    <section class="re-section">
+      <div class="re-section-head">
+        <h2>证件照与学生照片<span class="re-count" id="photoCount">0 张</span></h2>
+      </div>
+      <p class="re-photo-tip">第一张照片将作为简历证件照显示，可通过「设为证件照」调整，最多 5 张。</p>
+      <div class="photo-grid" id="photoGrid"></div>
+      <input type="file" id="photoInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden>
+    </section>
+
+    <div id="sections"></div>
+  </main>
+
+  <!-- 条目编辑弹窗 -->
+  <div class="modal-overlay" id="itemOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="itemTitle">添加条目</h3>
+        <button class="modal-close" id="itemClose" type="button">&times;</button>
+      </div>
+      <form id="itemForm">
+        <div class="form-grid">
+          <div class="form-item">
+            <label id="labelTitle">标题 <span class="required">*</span></label>
+            <input type="text" id="i_title" maxlength="60">
+          </div>
+          <div class="form-item">
+            <label id="labelSubtitle">副标题</label>
+            <input type="text" id="i_subtitle" maxlength="60">
+          </div>
+          <div class="form-item">
+            <label id="labelDate">时间</label>
+            <input type="text" id="i_date" maxlength="40" placeholder="如 2024-03 或 2024-01 ~ 2024-06">
+          </div>
+          <div class="form-item form-item-full">
+            <label id="labelDesc">描述</label>
+            <textarea id="i_desc" rows="4" maxlength="1000"></textarea>
+          </div>
+        </div>
+
+        <div class="section-title">
+          相关资料
+          <span class="section-hint">支持任意格式文件，每个条目最多 10 个，单个不超过 50MB</span>
+        </div>
+        <div class="att-list" id="attList"></div>
+        <button type="button" class="btn-add-att" id="addAttBtn">+ 选择资料文件</button>
+        <input type="file" id="attInput" multiple hidden>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="itemCancel">取消</button>
+          <button type="submit" class="btn btn-primary" id="itemSave">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 删除确认弹窗 -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3>删除确认</h3>
+        <button class="modal-close" id="confirmClose" type="button">&times;</button>
+      </div>
+      <p class="confirm-text" id="confirmText"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const studentId = {{ student.id }};
+    // 档案初始数据（与学生档案共享）
+    const studentProfile = {{ {
+      'gender': student.gender or '',
+      'grade': student.grade or '',
+      'course': student.course or '',
+      'guardians': guardians or [],
+    } | tojson }};
+    const TYPE_CONFIG = {
+      education:   { label: '教育经历', add: '添加教育经历', fields: ['学校名称', '学段 / 班级', '时间段', '说明'] },
+      training:    { label: '培训经历', add: '添加培训经历', fields: ['培训课程', '培训机构', '培训时间', '培训内容'] },
+      project:     { label: '项目经验', add: '添加项目经验', fields: ['项目名称', '角色 / 成果', '项目时间', '项目描述'] },
+      award:       { label: '获奖与荣誉', add: '添加获奖与荣誉', fields: ['荣誉 / 奖项名称', '颁发机构 / 获奖等级', '获得日期', '荣誉说明'] },
+      social:      { label: '社会实践与活动经历', add: '添加实践 / 活动', fields: ['活动名称', '组织方 / 担任角色', '活动时间', '活动内容描述'] },
+      work:        { label: '作品展示', add: '添加作品', fields: ['作品名称', '作品形式', '创作时间', '作品说明'] },
+    };
+
+    // 简历栏目分组：与后端 RESUME_GROUPS 保持一致
+    // 三个文本项（hobby / personality / self_evaluation）均为纯文字、无资料上传
+    const RESUME_GROUPS = [
+      { label: '教育经历', types: ['education'] },
+      { label: '培训经历', types: ['training'] },
+      { label: '项目经验', types: ['project'] },
+      { label: '获奖与荣誉', types: ['award'] },
+      { label: '社会实践与活动经历', types: ['social'] },
+      { label: '兴趣爱好与性格特点', types: ['hobby', 'personality', 'self_evaluation'] },
+      { label: '作品展示', types: ['work'] },
+    ];
+
+    // 纯文字项配置：label 为简历中的显示名，placeholder 为输入提示
+    const TEXT_CONFIG = {
+      hobby:           { label: '兴趣爱好', placeholder: '仅填写文字描述，例：吉他演奏（十级）、书法、篮球等' },
+      personality:     { label: '性格描述', placeholder: '仅填写文字描述，例：性格开朗、做事细致、有耐心、责任心强' },
+      self_evaluation: { label: '自我评价', placeholder: '仅填写文字描述，例：学习主动性强，能独立完成项目，团队协作良好' },
+    };
+
+    // 各文本项的初始内容（由后端 text_initial 提供）
+    const textInitial = {{ text_initial | tojson }};
+
+    // 权限标志：档案信息区是否可编辑（管理员 / 校长 / 教务）
+    const canEditProfile = {{ can_edit_profile | tojson }};
+
+    let items = {};                       // 各类型条目
+    let photos = [];                      // 学生照片（第一张为证件照）
+    let editingType = null, editingItem = null;
+    let existingAtts = [];                // 已上传附件
+    let pendingFiles = [];                // 待上传文件
+    let confirmAction = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      load();
+      loadPhotos();
+      // 档案信息初始化
+      loadSubjectOptions();
+      $('p_gender').value = studentProfile.gender || '男';
+      $('p_grade').value = studentProfile.grade || '';
+      (studentProfile.guardians.length ? studentProfile.guardians : [{}]).forEach(g => addGuardianGroup(g));
+      if ($('addGuardianBtn')) $('addGuardianBtn').addEventListener('click', () => addGuardianGroup());
+      if ($('profileSave')) $('profileSave').addEventListener('click', saveProfile);
+      $('photoInput').addEventListener('change', onPhotoSelect);
+      $('itemClose').addEventListener('click', closeItemModal);
+      $('itemCancel').addEventListener('click', closeItemModal);
+      $('itemOverlay').addEventListener('click', (e) => { if (e.target === $('itemOverlay')) closeItemModal(); });
+      $('itemForm').addEventListener('submit', saveItem);
+      $('addAttBtn').addEventListener('click', () => $('attInput').click());
+      $('attInput').addEventListener('change', onAttSelect);
+      $('confirmClose').addEventListener('click', closeConfirm);
+      $('confirmCancel').addEventListener('click', closeConfirm);
+      $('confirmOk').addEventListener('click', () => { if (confirmAction) confirmAction(); });
+    });
+
+    // ---------- 加载与渲染 ----------
+    async function load() {
+      try {
+        const res = await fetch(`/api/students/${studentId}/resume-items`);
+        items = await res.json();
+        render();
+      } catch (err) {
+        showToast('加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    function render() {
+      const wrap = $('sections');
+      wrap.innerHTML = '';
+      for (const group of RESUME_GROUPS) {
+        const sec = document.createElement('section');
+        sec.className = 're-section';
+        const isSingle = group.types.length === 1;
+        sec.innerHTML = `
+          <div class="re-section-head">
+            <h2>${group.label}</h2>
+            ${isSingle ? '' : '<span class="re-count">文字描述</span>'}
+          </div>`;
+        if (isSingle) {
+          sec.appendChild(makeTypeBlock(group.types[0]));
+        } else {
+          const body = document.createElement('div');
+          body.className = 're-group-body';
+          for (const type of group.types) body.appendChild(makeTextBlock(type));
+          sec.appendChild(body);
+        }
+        wrap.appendChild(sec);
+      }
+    }
+
+    // 单个栏目的条目区（标题 + 添加按钮 + 条目列表）
+    function makeTypeBlock(type) {
+      const cfg = TYPE_CONFIG[type];
+      const list = items[type] || [];
+      const box = document.createElement('div');
+      box.className = 're-type-block';
+      box.innerHTML = `
+        <div class="re-type-head">
+          <h3 class="re-type-title">${cfg.label}<span class="re-count">${list.length} 项</span></h3>
+          <button class="btn btn-primary btn-sm" data-add="${type}">${cfg.add}</button>
+        </div>
+        <div class="re-list"></div>`;
+      const listEl = box.querySelector('.re-list');
+      if (!list.length) {
+        listEl.innerHTML = `<div class="re-empty">暂无内容，点击「${cfg.add}」开始添加</div>`;
+      }
+      list.forEach(it => listEl.appendChild(makeItemCard(type, it)));
+      box.querySelector('[data-add]').addEventListener('click', () => openItemModal(type, null));
+      return box;
+    }
+
+    // 纯文字项区块：兴趣爱好 / 性格描述 / 自我评价，均为文本框（不支持上传资料）
+    function makeTextBlock(type) {
+      const cfg = TEXT_CONFIG[type];
+      const box = document.createElement('div');
+      box.className = 're-type-block re-sub-block';
+      box.innerHTML = `
+        <div class="re-type-head">
+          <h3 class="re-type-title">${cfg.label}</h3>
+          <button class="btn btn-primary btn-sm" data-save-text="${type}" type="button">保存</button>
+        </div>
+        <textarea class="notes-area" rows="4" maxlength="1000"
+          data-text="${type}"
+          placeholder="${escapeHtml(cfg.placeholder)}">${escapeHtml(textInitial[type] || '')}</textarea>`;
+      box.querySelector('[data-save-text]').addEventListener('click', () => saveTextItem(type));
+      return box;
+    }
+
+    function makeItemCard(type, it) {
+      const cfg = TYPE_CONFIG[type];
+      const card = document.createElement('div');
+      card.className = 're-item';
+      const attsHtml = (it.attachments || []).map(a => `
+        <span class="re-att">
+          <span class="re-att-icon">${a.icon}</span>
+          <a href="/uploads/files/${a.filename}?download=1" title="点击下载">${escapeHtml(a.original_name)}</a>
+          <span class="re-att-size">${a.size_text}</span>
+        </span>`).join('');
+      card.innerHTML = `
+        <div class="re-item-head">
+          <div class="re-item-title">
+            <h4>${escapeHtml(it.title)}</h4>
+            ${it.subtitle ? `<span class="re-item-sub">${escapeHtml(it.subtitle)}</span>` : ''}
+          </div>
+          <div class="re-item-actions">
+            <button class="btn-link" data-act="edit">编辑</button>
+            <button class="btn-link btn-link-danger" data-act="del">删除</button>
+          </div>
+        </div>
+        ${it.date_text ? `<div class="re-item-date">${escapeHtml(it.date_text)}</div>` : ''}
+        ${it.description ? `<p class="re-item-desc">${escapeHtml(it.description)}</p>` : ''}
+        ${attsHtml ? `<div class="re-item-atts">${attsHtml}</div>` : ''}`;
+      card.querySelector('[data-act="edit"]').addEventListener('click', () => openItemModal(type, it));
+      card.querySelector('[data-act="del"]').addEventListener('click', () => {
+        askConfirm(`确定要删除「${it.title}」这条${cfg.label}吗？相关资料将一并删除。`, async () => {
+          const res = await fetch(`/api/resume-items/${it.id}`, { method: 'DELETE' });
+          if (!res.ok) { showToast('删除失败', 'error'); return; }
+          closeConfirm();
+          showToast('已删除', 'success');
+          load();
+        });
+      });
+      return card;
+    }
+
+    // ---------- 条目弹窗 ----------
+    function openItemModal(type, item) {
+      editingType = type;
+      editingItem = item;
+      const cfg = TYPE_CONFIG[type];
+      $('itemTitle').textContent = (item ? '编辑' : '添加') + cfg.label;
+      $('labelTitle').innerHTML = cfg.fields[0] + ' <span class="required">*</span>';
+      $('labelSubtitle').textContent = cfg.fields[1];
+      $('labelDate').textContent = cfg.fields[2];
+      $('labelDesc').textContent = cfg.fields[3];
+      $('i_title').value = item?.title || '';
+      $('i_subtitle').value = item?.subtitle || '';
+      $('i_date').value = item?.date_text || '';
+      $('i_desc').value = item?.description || '';
+      existingAtts = item?.attachments ? [...item.attachments] : [];
+      pendingFiles = [];
+      renderAtts();
+      $('itemOverlay').style.display = 'flex';
+      setTimeout(() => $('i_title').focus(), 50);
+    }
+
+    function closeItemModal() {
+      $('itemOverlay').style.display = 'none';
+      editingType = editingItem = null;
+      existingAtts = [];
+      pendingFiles = [];
+    }
+
+    async function saveItem(e) {
+      e.preventDefault();
+      const title = $('i_title').value.trim();
+      if (!title) {
+        showToast('请填写标题', 'error');
+        $('i_title').focus();
+        return;
+      }
+      const payload = {
+        type: editingType,
+        title,
+        subtitle: $('i_subtitle').value.trim(),
+        date: $('i_date').value.trim(),
+        description: $('i_desc').value.trim(),
+      };
+      $('itemSave').disabled = true;
+      try {
+        let itemId;
+        if (editingItem) {
+          const res = await fetch(`/api/resume-items/${editingItem.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const r = await res.json();
+            showToast(r.error || '保存失败', 'error');
+            return;
+          }
+          itemId = editingItem.id;
+        } else {
+          const res = await fetch(`/api/students/${studentId}/resume-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const r = await res.json();
+          if (!res.ok) {
+            showToast(r.error || '保存失败', 'error');
+            return;
+          }
+          itemId = r.id;
+        }
+        // 上传新选择的资料
+        if (pendingFiles.length) {
+          const fd = new FormData();
+          pendingFiles.forEach(f => fd.append('files', f));
+          const res = await fetch(`/api/resume-items/${itemId}/attachments`, { method: 'POST', body: fd });
+          if (!res.ok) {
+            const r = await res.json().catch(() => ({}));
+            showToast(r.error || '内容已保存，但资料上传失败', 'error');
+          }
+        }
+        closeItemModal();
+        showToast('保存成功', 'success');
+        load();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('itemSave').disabled = false;
+      }
+    }
+
+    // ---------- 附件 ----------
+    function renderAtts() {
+      const wrap = $('attList');
+      wrap.innerHTML = '';
+      existingAtts.forEach(a => {
+        const row = document.createElement('div');
+        row.className = 'att-row';
+        row.innerHTML = `
+          <span class="att-icon">${a.icon}</span>
+          <span class="att-name">${escapeHtml(a.original_name)}</span>
+          <span class="att-size">${a.size_text}</span>
+          <button type="button" class="att-remove" title="删除该附件">&times;</button>`;
+        row.querySelector('.att-remove').addEventListener('click', async () => {
+          const res = await fetch(`/api/attachments/${a.id}`, { method: 'DELETE' });
+          if (!res.ok) { showToast('删除附件失败', 'error'); return; }
+          existingAtts = existingAtts.filter(x => x.id !== a.id);
+          renderAtts();
+          showToast('附件已删除', 'success');
+        });
+        wrap.appendChild(row);
+      });
+      pendingFiles.forEach((f, i) => {
+        const row = document.createElement('div');
+        row.className = 'att-row att-pending';
+        row.innerHTML = `
+          <span class="att-icon">NEW</span>
+          <span class="att-name">${escapeHtml(f.name)}</span>
+          <span class="att-size">${formatSize(f.size)}</span>
+          <button type="button" class="att-remove" title="移除该文件">&times;</button>`;
+        row.querySelector('.att-remove').addEventListener('click', () => {
+          pendingFiles.splice(i, 1);
+          renderAtts();
+        });
+        wrap.appendChild(row);
+      });
+    }
+
+    function onAttSelect(e) {
+      const files = [...e.target.files];
+      e.target.value = '';
+      for (const f of files) {
+        if (existingAtts.length + pendingFiles.length >= 10) {
+          showToast('每个条目最多 10 个附件', 'error');
+          break;
+        }
+        if (f.size > 50 * 1024 * 1024) {
+          showToast(`文件过大：${f.name}（不超过 50MB）`, 'error');
+          continue;
+        }
+        pendingFiles.push(f);
+      }
+      renderAtts();
+    }
+
+    // ---------- 证件照与学生照片 ----------
+    async function loadPhotos() {
+      try {
+        const res = await fetch(`/api/students/${studentId}/photos`);
+        photos = await res.json();
+        renderPhotos();
+      } catch (err) {
+        showToast('照片加载失败', 'error');
+      }
+    }
+
+    function renderPhotos() {
+      const grid = $('photoGrid');
+      grid.innerHTML = '';
+      $('photoCount').textContent = photos.length + ' 张';
+      photos.forEach((p, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'photo-tile';
+        tile.innerHTML = `
+          <img src="/uploads/photos/${p.filename}" alt="照片${i + 1}">
+          ${i === 0
+            ? '<span class="photo-badge">证件照</span>'
+            : '<button type="button" class="photo-set-avatar" title="设为证件照">设为证件照</button>'}
+          <button type="button" class="photo-remove" title="删除该照片">&times;</button>`;
+        const setBtn = tile.querySelector('.photo-set-avatar');
+        if (setBtn) setBtn.addEventListener('click', async () => {
+          const res = await fetch(`/api/students/${studentId}/photos/${p.id}/set-avatar`, { method: 'POST' });
+          if (!res.ok) { showToast('设置失败', 'error'); return; }
+          showToast('已设为证件照', 'success');
+          loadPhotos();
+        });
+        tile.querySelector('.photo-remove').addEventListener('click', () => {
+          askConfirm('确定删除该照片吗？', async () => {
+            const res = await fetch(`/api/students/${studentId}/photos/${p.id}`, { method: 'DELETE' });
+            if (!res.ok) { showToast('删除失败', 'error'); return; }
+            closeConfirm();
+            showToast('照片已删除', 'success');
+            loadPhotos();
+          });
+        });
+        grid.appendChild(tile);
+      });
+      if (photos.length < 5) {
+        const add = document.createElement('div');
+        add.className = 'photo-tile photo-add';
+        add.textContent = '+ 上传照片';
+        add.addEventListener('click', () => $('photoInput').click());
+        grid.appendChild(add);
+      }
+    }
+
+    async function onPhotoSelect(e) {
+      const files = [...e.target.files];
+      e.target.value = '';
+      if (!files.length) return;
+      const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const fd = new FormData();
+      let skipped = false;
+      for (const f of files) {
+        if (!allowed.includes(f.type) || f.size > 5 * 1024 * 1024) { skipped = true; continue; }
+        fd.append('photos', f);
+      }
+      if (skipped) showToast('已跳过格式不支持或超过 5MB 的图片', 'error');
+      if (!fd.has('photos')) return;
+      const res = await fetch(`/api/students/${studentId}/photos`, { method: 'POST', body: fd });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(r.error || '上传失败', 'error'); return; }
+      showToast(r.message || '上传成功', 'success');
+      loadPhotos();
+    }
+
+    // ---------- 档案信息（基本信息 + 监护人，与学生档案共享） ----------
+    let subjectsCache = [];
+
+    async function loadSubjectOptions() {
+      try {
+        const res = await fetch('/api/subjects');
+        subjectsCache = (await res.json()).subjects || [];
+      } catch (err) {
+        showToast('科目列表加载失败', 'error');
+      }
+      const sel = $('p_course');
+      const current = studentProfile.course || '';
+      sel.innerHTML = '<option value="">— 未选择科目 —</option>' +
+        subjectsCache.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('');
+      // 历史档案的报读科目不在科目列表中时补充为选项，避免显示丢失
+      if (current && ![...sel.options].some(o => o.value === current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + '（科目管理中未建档）';
+        sel.appendChild(opt);
+      }
+      sel.value = current;
+    }
+
+    function addGuardianGroup(data = {}) {
+      const wrap = document.createElement('div');
+      wrap.className = 'guardian-group';
+      const ro = canEditProfile ? '' : ' disabled';
+      wrap.innerHTML = `
+        <input type="text" class="g-name" placeholder="监护人姓名（如：父亲）" maxlength="30" value="${escapeHtml(data.name || '')}"${ro}>
+        <input type="tel" class="g-phone" placeholder="监护人电话" maxlength="20" value="${escapeHtml(data.phone || '')}"${ro}>
+        <input type="text" class="g-wechat" placeholder="监护人微信" maxlength="30" value="${escapeHtml(data.wechat || '')}"${ro}>
+        ${canEditProfile ? '<button type="button" class="btn-remove-guardian" title="移除该组监护人">&times;</button>' : ''}`;
+      const rm = wrap.querySelector('.btn-remove-guardian');
+      if (rm) rm.addEventListener('click', () => {
+        if ($('guardianList').children.length > 1) {
+          wrap.remove();
+        } else {
+          showToast('至少保留一组监护人信息栏', 'error');
+        }
+      });
+      $('guardianList').appendChild(wrap);
+    }
+
+    function collectGuardians() {
+      return [...$('guardianList').querySelectorAll('.guardian-group')].map(g => ({
+        name: g.querySelector('.g-name').value.trim(),
+        phone: g.querySelector('.g-phone').value.trim(),
+        wechat: g.querySelector('.g-wechat').value.trim(),
+      })).filter(g => g.name || g.phone || g.wechat);
+    }
+
+    async function saveProfile() {
+      // 注意：此处不提交 id_card —— 简历相关页面不涉及身份证号，避免误清空档案中的证件号码
+      const data = {
+        name: $('p_name').value.trim(),
+        gender: $('p_gender').value,
+        birthdate: $('p_birthdate').value,
+        phone: $('p_phone').value.trim(),
+        school: $('p_school').value.trim(),
+        grade: $('p_grade').value,
+        course: $('p_course').value.trim(),
+        address: $('p_address').value.trim(),
+        guardians: collectGuardians(),
+      };
+      if (!data.name) {
+        showToast('请填写学生姓名', 'error');
+        $('p_name').focus();
+        return;
+      }
+      $('profileSave').disabled = true;
+      try {
+        const res = await fetch(`/api/students/${studentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const r = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showToast(r.error || '保存失败', 'error');
+          return;
+        }
+        showToast('档案信息已保存，简历同步更新', 'success');
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('profileSave').disabled = false;
+      }
+    }
+
+    // ---------- 纯文字项保存（兴趣爱好 / 性格描述 / 自我评价） ----------
+    async function saveTextItem(type) {
+      const cfg = TEXT_CONFIG[type];
+      const area = document.querySelector(`textarea[data-text="${type}"]`);
+      const btn = document.querySelector(`[data-save-text="${type}"]`);
+      if (!area || !btn) return;
+      const text = area.value.trim();
+      btn.disabled = true;
+      try {
+        // 自我评价存于档案备注字段，走独立接口；其余两项存于简历文本项接口
+        const isNotes = type === 'self_evaluation';
+        const res = await fetch(
+          isNotes ? `/api/students/${studentId}/notes` : `/api/students/${studentId}/resume-text`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(isNotes ? { notes: text } : { type, text }),
+          }
+        );
+        if (!res.ok) {
+          const r = await res.json().catch(() => ({}));
+          showToast(r.error || '保存失败', 'error');
+          return;
+        }
+        showToast(cfg.label + '已保存', 'success');
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---------- 通用 ----------
+    function askConfirm(text, action) {
+      $('confirmText').textContent = text;
+      confirmAction = action;
+      $('confirmOverlay').style.display = 'flex';
+    }
+
+    function closeConfirm() {
+      $('confirmOverlay').style.display = 'none';
+      confirmAction = null;
+    }
+
+    function formatSize(n) {
+      if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+      if (n >= 1024) return Math.round(n / 1024) + ' KB';
+      return n + ' B';
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# ---- Runtime data: NEVER commit ----
+# students.db holds real student records, guardians, payment history, refunds
+# and bcrypt password hashes. uploads/ holds student photos and payment proofs.
+# Publishing either would expose personal data of minors and their families.
+students.db
+*.db
+*.db-shm
+*.db-wal
+uploads/
+
+# ---- Local backups ----
+backups/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# ---- Logs ----
+*.log
+
+# ---- Excel export temp files ----
+~$*.xlsx
+
+# ---- Environment ----
+.env
+.env.local
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# ---- AI tooling scratch dirs (never publish) ----
+.agent/
+.codebuddy/
+.ai-memory/
+.claude/

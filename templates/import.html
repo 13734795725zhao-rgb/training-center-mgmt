@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据导入 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/import.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+  <div class="container">
+    <h2 style="margin-bottom:24px;font-size:22px">批量导入学生数据</h2>
+
+    <div class="import-steps">
+      <div class="import-step active" id="step1">
+        <div class="step-num">1</div>
+        <div class="step-text">下载模板</div>
+      </div>
+      <div class="import-step" id="step2">
+        <div class="step-num">2</div>
+        <div class="step-text">填写数据</div>
+      </div>
+      <div class="import-step" id="step3">
+        <div class="step-num">3</div>
+        <div class="step-text">上传导入</div>
+      </div>
+      <div class="import-step" id="step4">
+        <div class="step-num">4</div>
+        <div class="step-text">查看结果</div>
+      </div>
+    </div>
+
+    <div class="template-card">
+      <div class="template-info">
+        <h4>学生导入模板</h4>
+        <p>请先下载 Excel 模板，按格式填写学生信息后上传</p>
+        <p style="margin-top:6px;font-size:12.5px;color:#64748b">
+          模板含「已购课时 / 缴费金额 / 缴费日期」列：填写后导入自动生成一条初始缴费记录，
+          课时管理页即可显示该学员的剩余课时；三列留空则只建档不生成缴费
+        </p>
+      </div>
+      <button class="btn btn-primary" onclick="downloadTemplate()">下载模板</button>
+    </div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">&#128229;</div>
+      <div class="upload-text">点击或拖拽 Excel 文件到此处上传</div>
+      <div class="upload-hint">支持 .xlsx 格式，单次最多 500 条记录</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+    </div>
+
+    <div id="resultArea"></div>
+  </div>
+
+  <script src="/static/js/common.js"></script>
+  <script>
+    function downloadTemplate() {
+      window.location.href = "/api/import/template";
+    }
+
+    const zone = document.getElementById("uploadZone");
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    async function handleFile(file) {
+      if (!file) return;
+      if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
+        Toast.error("仅支持 .xlsx 格式文件");
+        return;
+      }
+      document.getElementById("step3").classList.add("active");
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await apiFetch("/api/import/students", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById("step3").classList.remove("active");
+        document.getElementById("step3").classList.add("done");
+        document.getElementById("step4").classList.add("active");
+        renderResult(data);
+      } else {
+        Toast.error(data.error || "导入失败");
+        document.getElementById("step3").classList.remove("active");
+      }
+    }
+
+    function renderResult(data) {
+      const area = document.getElementById("resultArea");
+      area.innerHTML = `
+        <div class="import-result">
+          <h3 style="margin-bottom:16px">${data.message || "导入完成"}</h3>
+          <div class="result-stats">
+            <div class="result-stat success">
+              <div class="num">${data.success || 0}</div>
+              <div class="label">成功导入</div>
+            </div>
+            <div class="result-stat fail">
+              <div class="num">${data.fail || 0}</div>
+              <div class="label">失败</div>
+            </div>
+          </div>
+          ${data.errors && data.errors.length ? `
+            <div class="result-errors">
+              ${data.errors.map(e => `<div>${escapeHtml(e)}</div>`).join("")}
+            </div>
+          ` : ""}
+          <div style="margin-top:16px;display:flex;gap:12px">
+            <button class="btn btn-primary" onclick="resetImport()">继续导入</button>
+            <a href="/students" class="btn btn-default">查看学生列表</a>
+          </div>
+        </div>
+      `;
+    }
+
+    function resetImport() {
+      document.getElementById("fileInput").value = "";
+      document.getElementById("resultArea").innerHTML = "";
+      ["step3", "step4"].forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.remove("active", "done");
+      });
+    }
+  </script>
+</body>
+</html>

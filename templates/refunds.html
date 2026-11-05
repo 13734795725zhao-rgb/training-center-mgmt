@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>退费管理 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/refunds.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+
+  <main class="container">
+    <!-- 选项卡 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="register" type="button">退费登记</button>
+      <button class="tab" data-tab="history" type="button">记录查询</button>
+    </div>
+
+    <!-- ===== 退费登记 ===== -->
+    <section id="tab-register" class="tab-panel">
+      <div class="toolbar reg-toolbar">
+        <span class="reg-tip">关联缴费后系统自动校验退费总额不超过原缴费金额</span>
+        {% if can('refund.write') %}
+    <button class="btn btn-primary" id="addBtn" type="button">+ 新建退费登记</button>
+    {% endif %}
+      </div>
+
+      <div class="summary" id="regSummary"></div>
+      <div class="list-card">
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th>退费日期</th>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>关联课程</th>
+              <th>退费金额</th>
+              <th>退课时数</th>
+              <th>退费方式</th>
+              <th>退费证明</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="recentTbody"></tbody>
+        </table>
+        <div class="empty-state" id="regEmpty" style="display:none">
+          <div class="empty-icon">退</div>
+          <div class="empty-title">暂无退费记录</div>
+          <div class="empty-desc">保存退费登记后，最近 10 条记录将显示在这里</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 记录查询 ===== -->
+    <section id="tab-history" class="tab-panel" style="display:none">
+      <div class="toolbar">
+        <label class="field-label">日期范围</label>
+        <input type="date" id="startDate">
+        <span class="range-sep">至</span>
+        <input type="date" id="endDate">
+        <div class="search-box">
+          <input type="text" id="keyword" placeholder="学号或学生姓名..." autocomplete="off">
+        </div>
+        <button class="btn btn-primary" id="queryBtn" type="button">查询</button>
+        {% if can('refund.export') %}
+    <button class="btn btn-ghost" id="exportBtn" type="button">导出 Excel</button>
+    {% endif %}
+      </div>
+      <div class="summary" id="hisSummary"></div>
+      <div class="list-card">
+        <table class="att-table">
+          <thead>
+            <tr>
+              <th>退费日期</th>
+              <th>学号</th>
+              <th>姓名</th>
+              <th>关联课程</th>
+              <th>原缴费金额</th>
+              <th>退费金额</th>
+              <th>退课时数</th>
+              <th>退费方式</th>
+              <th>退费原因</th>
+              <th class="th-remark">备注</th>
+              <th>退费证明</th>
+              <th class="th-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="hisTbody"></tbody>
+        </table>
+        <div class="empty-state" id="hisEmpty" style="display:none">
+          <div class="empty-icon">查</div>
+          <div class="empty-title">暂无退费记录</div>
+          <div class="empty-desc">调整筛选条件后重新查询</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 新建/编辑退费 弹窗 -->
+  <div class="modal-overlay" id="refundModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新建退费登记</h3>
+        <button class="modal-close" id="modalClose" type="button">&times;</button>
+      </div>
+      <form id="refundForm" onsubmit="return false">
+        <div class="form-grid">
+          <div class="form-item">
+            <label>学生 <span class="required">*</span></label>
+            <select id="refundStudent" required>
+              <option value="">请选择学生</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>关联缴费记录</label>
+            <select id="refundPayment">
+              <option value="">不关联</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>退费金额（元）<span class="required">*</span></label>
+            <input type="number" id="refundAmount" step="0.01" min="0.01" placeholder="请输入退费金额" required>
+          </div>
+          <div class="form-item">
+            <label>退课时数（节）</label>
+            <input type="number" id="refundLessons" step="1" min="0" placeholder="0 = 不退课时" value="0">
+          </div>
+          <div class="form-item">
+            <label>退费日期 <span class="required">*</span></label>
+            <input type="date" id="refundDate" required>
+          </div>
+          <div class="form-item">
+            <label>退费方式</label>
+            <select id="refundMethod">
+              <option value="原路退回">原路退回</option>
+              <option value="现金">现金</option>
+              <option value="微信">微信</option>
+              <option value="支付宝">支付宝</option>
+              <option value="银行转账">银行转账</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>退费原因 <span class="required">*</span></label>
+            <input type="text" id="refundReason" placeholder="如：转学、退课等" maxlength="100" required>
+          </div>
+          <div class="form-item form-item-full">
+            <label>备注</label>
+            <textarea id="refundRemark" maxlength="200" rows="2" placeholder="备注信息（选填，最多200字）"></textarea>
+          </div>
+          <div class="form-item form-item-full">
+            <label>退费证明 <span class="proof-hint">（选填，最多 5 张，jpg/png/gif/webp，单张 5MB 内）</span></label>
+            <div class="proof-picker">
+              <div class="proof-thumbs" id="proofThumbs"></div>
+              <button type="button" class="btn btn-ghost proof-add-btn" id="proofAddBtn">+ 添加图片</button>
+              <input type="file" id="f_proofs" accept=".jpg,.jpeg,.png,.gif,.webp" multiple hidden>
+            </div>
+          </div>
+        </div>
+        <div class="pay-hint" id="payHint"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">取消</button>
+          <button type="button" class="btn btn-primary" id="saveBtn">保存退费记录</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <footer class="footer">培训机构管理系统 · 退费管理模块 · 局域网内部使用</footer>
+  <script src="/static/js/common.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    let allStudents = [];   // 学生档案（下拉选择）
+    let allPayments = [];   // 全部缴费记录（关联 + 校验）
+    let refundCache = [];   // 全部退费记录：最近列表 + 已退金额校验
+    let editingId = null;   // 当前编辑的退费 id（null = 新增）
+    let lastQuery = null;   // 最近一次成功查询的条件与条数：导出只导这次的结果
+    // 退费证明图片
+    let newProofs = [];        // 本次新选：[{file, url}]
+    let existingPhotos = [];   // 编辑时已有：[{id, filename, original_name}]
+    let removedPhotoIds = [];  // 编辑时标记删除的已有图片 id
+
+    // 权限标志（服务端下发）
+    const PERMS = {
+      write: {{ can('refund.write') | tojson }},
+      delete: {{ can('refund.delete') | tojson }},
+      export: {{ can('refund.export') | tojson }},
+      // 只读角色可在线查看证明图片，但不能下载
+      download: {{ (user and user.role != 'viewer') | tojson }},
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const past = new Date(Date.now() - 29 * 86400000);
+      $('startDate').value = `${past.getFullYear()}-${pad(past.getMonth() + 1)}-${pad(past.getDate())}`;
+      $('endDate').value = todayStr;
+
+      // 选项卡切换
+      document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+        switchTab(t.dataset.tab);
+        if (t.dataset.tab === 'history') loadHistory();
+      }));
+
+      if ($('addBtn')) $('addBtn').addEventListener('click', () => openRefundModal());
+      $('modalClose').addEventListener('click', closeRefundModal);
+      $('cancelBtn').addEventListener('click', closeRefundModal);
+      $('refundModal').addEventListener('click', (e) => {
+        if (e.target === $('refundModal')) closeRefundModal();
+      });
+      $('refundStudent').addEventListener('change', () => { onStudentChange(); renderPayHint(); });
+      $('refundPayment').addEventListener('change', renderPayHint);
+      $('saveBtn').addEventListener('click', saveRefund);
+      $('proofAddBtn').addEventListener('click', () => $('f_proofs').click());
+      $('f_proofs').addEventListener('change', (e) => { addProofFiles([...e.target.files]); e.target.value = ''; });
+      $('proofThumbs').addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-rm-new]');
+        if (rm) removeNewProof(Number(rm.dataset.rmNew));
+        const rmOld = e.target.closest('[data-rm-old]');
+        if (rmOld) removeExistingProof(Number(rmOld.dataset.rmOld));
+      });
+      $('recentTbody').addEventListener('click', onProofClick);
+      $('hisTbody').addEventListener('click', onProofClick);
+      $('queryBtn').addEventListener('click', loadHistory);
+      if ($('exportBtn')) $('exportBtn').addEventListener('click', exportHistory);
+
+      init();
+    });
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === name));
+      document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+      $('tab-' + name).style.display = '';
+    }
+
+    async function init() {
+      await Promise.all([loadStudents(), loadPayments()]);
+      await loadRecent();
+    }
+
+    // ---------- 退费登记 ----------
+    async function loadStudents() {
+      try {
+        const res = await apiFetch('/api/students?per_page=200');
+        if (!res) return;
+        const data = await res.json();
+        allStudents = data.students || [];
+        $('refundStudent').innerHTML = '<option value="">请选择学生</option>' +
+          allStudents.map(s => `<option value="${s.id}">${escapeHtml(s.name)}（${escapeHtml(s.student_no || '')}）</option>`).join('');
+      } catch (err) {
+        showToast('学生列表加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    async function loadPayments() {
+      try {
+        const res = await apiFetch('/api/payments');
+        if (!res) return;
+        allPayments = await res.json();
+      } catch (err) {
+        showToast('缴费记录加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    async function loadRecent() {
+      try {
+        const res = await apiFetch('/api/refunds');
+        if (!res) return;
+        refundCache = await res.json();
+        renderRecent();
+        renderPayHint();
+      } catch (err) {
+        showToast('退费记录加载失败，请检查服务器连接', 'error');
+      }
+    }
+
+    // 选择学生后加载其缴费记录供关联
+    function onStudentChange() {
+      const sid = Number($('refundStudent').value);
+      const pays = sid ? allPayments.filter(p => p.student_id === sid) : [];
+      $('refundPayment').innerHTML = '<option value="">不关联</option>' +
+        pays.map(p => `<option value="${p.id}">${escapeHtml(p.course || '')} · ¥${(p.amount || 0).toFixed(2)}（${escapeHtml(p.pay_date || '')}）</option>`).join('');
+    }
+
+    // 关联缴费提示：原缴费 / 已退 / 剩余可退
+    function renderPayHint() {
+      const box = $('payHint');
+      const pid = Number($('refundPayment').value);
+      if (!pid) { box.textContent = ''; return; }
+      const pay = allPayments.find(p => p.id === pid);
+      if (!pay) { box.textContent = ''; return; }
+      const refunded = refundedOf(pid);
+      const remain = (pay.amount || 0) - refunded;
+      const lessonsRefunded = refundedLessonsOf(pid);
+      const lessonsRemain = (pay.lesson_count || 0) - lessonsRefunded;
+      box.innerHTML = `原缴费 ¥${(pay.amount || 0).toFixed(2)} · 已退 ¥${refunded.toFixed(2)} · 剩余可退 <b class="${remain <= 0 ? 'over' : ''}">¥${remain.toFixed(2)}</b>` +
+        ` &nbsp;|&nbsp; 原缴费 ${(pay.lesson_count || 0)} 节 · 已退 ${lessonsRefunded} 节 · 剩余可退 <b class="${lessonsRemain <= 0 ? 'over' : ''}">${lessonsRemain}</b> 节`;
+    }
+
+    // 某条缴费已退金额（排除当前正在编辑的记录）
+    function refundedOf(pid) {
+      return refundCache
+        .filter(r => r.payment_id === pid && r.id !== editingId)
+        .reduce((s, r) => s + (r.amount || 0), 0);
+    }
+
+    // 某条缴费已退课时（排除当前正在编辑的记录）
+    function refundedLessonsOf(pid) {
+      return refundCache
+        .filter(r => r.payment_id === pid && r.id !== editingId)
+        .reduce((s, r) => s + (r.lesson_count || 0), 0);
+    }
+
+    // ---------- 新建/编辑弹窗 ----------
+    function openRefundModal() {
+      editingId = null;
+      $('modalTitle').textContent = '新建退费登记';
+      $('refundForm').reset();
+      // 退费证明：重置图片状态
+      clearProofState();
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      $('refundDate').value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      $('refundMethod').value = '原路退回';
+      $('refundLessons').value = 0;
+      onStudentChange();
+      renderPayHint();
+      $('refundModal').style.display = 'flex';
+      setTimeout(() => $('refundStudent').focus(), 50);
+    }
+
+    function closeRefundModal() {
+      $('refundModal').style.display = 'none';
+      editingId = null;
+      $('payHint').textContent = '';
+      clearProofState();
+    }
+
+    async function saveRefund() {
+      const sid = Number($('refundStudent').value);
+      if (!sid) { showToast('请选择学生', 'error'); return; }
+      const amount = parseFloat($('refundAmount').value);
+      if (!amount || amount <= 0) { showToast('退费金额必须大于 0', 'error'); return; }
+      if (!$('refundDate').value) { showToast('请选择退费日期', 'error'); return; }
+      const reason = $('refundReason').value.trim();
+      if (!reason) { showToast('请填写退费原因', 'error'); return; }
+      const lessons = parseInt($('refundLessons').value, 10);
+      if (isNaN(lessons) || lessons < 0) { showToast('退课时数必须为 0 或正整数', 'error'); $('refundLessons').focus(); return; }
+
+      const pidRaw = $('refundPayment').value;
+      const pid = pidRaw ? Number(pidRaw) : null;
+
+      // 前端校验：退费总额不得超过原缴费（后端同样校验）
+      if (pid) {
+        const pay = allPayments.find(p => p.id === pid);
+        if (pay) {
+          const remain = (pay.amount || 0) - refundedOf(pid);
+          if (amount > remain + 1e-9) {
+            showToast(`退费金额超过剩余可退（¥${remain.toFixed(2)}）`, 'error');
+            return;
+          }
+          // 前端校验：累计退课时不得超过原缴费节数
+          const lessonsRefunded = refundedLessonsOf(pid);
+          const lessonsRemain = (pay.lesson_count || 0) - lessonsRefunded;
+          if (lessons > lessonsRemain) {
+            showToast(`退课时数超过剩余可退课时（剩 ${lessonsRemain} 节）`, 'error');
+            return;
+          }
+        }
+      }
+
+      $('saveBtn').disabled = true;
+      try {
+        const res = await apiFetch(editingId ? `/api/refunds/${editingId}` : '/api/refunds', {
+          method: editingId ? 'PUT' : 'POST',
+          body: {
+            student_id: sid,
+            payment_id: pid,
+            amount,
+            lesson_count: lessons,
+            refund_date: $('refundDate').value,
+            method: $('refundMethod').value,
+            reason,
+            remark: $('refundRemark').value.trim(),
+          },
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || '保存失败', 'error'); return; }
+        // 保存成功后同步退费证明图片（删除标记移除的 + 上传新选的）
+        const refundId = editingId || data.id;
+        if (newProofs.length || removedPhotoIds.length) {
+          showToast(editingId ? '修改成功，正在同步退费证明...' : '退费记录已保存，正在上传退费证明...', 'success');
+          await syncProofs(refundId);
+        } else {
+          showToast(data.message || '保存成功', 'success');
+        }
+        closeRefundModal();
+        await loadRecent();
+      } catch (err) {
+        showToast('网络错误，保存失败', 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    }
+
+    function renderRecent() {
+      const list = refundCache.slice(0, 10);
+      const tbody = $('recentTbody');
+      tbody.innerHTML = '';
+      $('regEmpty').style.display = list.length ? 'none' : 'flex';
+      list.forEach(r => tbody.appendChild(refundRow(r, true)));
+      const total = list.reduce((s, r) => s + (r.amount || 0), 0);
+      $('regSummary').innerHTML = refundCache.length ? `
+        <div class="sum-chip">最近退费 <b>${list.length}</b> 条</div>
+        <div class="sum-chip sum-refund">合计退款 <b>¥${total.toFixed(2)}</b></div>` : '';
+    }
+
+    // 行渲染（退费登记最近列表 simple / 记录查询完整列 共用）
+    function refundRow(r, simple) {
+      const tr = document.createElement('tr');
+      const course = r.payment_course ? escapeHtml(r.payment_course) : '—';
+      tr.innerHTML = `
+          <td class="td-date">${escapeHtml(r.refund_date || '')}</td>
+          <td class="td-id">${escapeHtml(r.student_no || '')}</td>
+          <td class="td-name">${escapeHtml(r.student_name || '')}</td>
+          <td class="td-sub">${course}</td>
+          ${simple ? '' : `<td class="td-money-sub">¥${(r.payment_amount || 0).toFixed(2)}</td>`}
+          <td class="td-money">¥${(r.amount || 0).toFixed(2)}</td>
+          <td>${r.lesson_count > 0 ? `<span class="lesson-tag lesson-refund">${r.lesson_count}</span>` : '—'}</td>
+          <td><span class="method-tag">${escapeHtml(r.method || '')}</span></td>
+          ${simple ? '' : `
+          <td class="td-sub">${escapeHtml(r.reason || '—')}</td>
+          <td class="td-remark">${escapeHtml(r.remark || '—')}</td>`}
+          <td>${proofCellHtml(r)}</td>
+          <td class="td-actions">
+            ${PERMS.write ? `<button class="btn-link" data-act="edit" type="button">编辑</button>` : ''}
+            ${PERMS.delete ? `<button class="btn-link btn-link-danger" data-act="del" type="button">删除</button>` : ''}
+          </td>`;
+      if (tr.querySelector('[data-act="edit"]')) tr.querySelector('[data-act="edit"]').addEventListener('click', () => editRefund(r));
+      if (tr.querySelector('[data-act="del"]')) tr.querySelector('[data-act="del"]').addEventListener('click', () => delRefund(r));
+      return tr;
+    }
+
+    // 编辑：打开弹窗并回填表单
+    function editRefund(r) {
+      switchTab('register');
+      editingId = r.id;
+      $('modalTitle').textContent = '编辑退费';
+      $('refundStudent').value = r.student_id;
+      onStudentChange();
+      $('refundPayment').value = r.payment_id || '';
+      $('refundAmount').value = r.amount;
+      $('refundLessons').value = r.lesson_count || 0;
+      $('refundDate').value = r.refund_date;
+      // 兼容历史数据中不在选项里的退费方式
+      if (r.method && ![...$('refundMethod').options].some(o => o.value === r.method)) {
+        const opt = document.createElement('option');
+        opt.value = opt.textContent = r.method;
+        $('refundMethod').appendChild(opt);
+      }
+      $('refundMethod').value = r.method || '原路退回';
+      $('refundReason').value = r.reason || '';
+      $('refundRemark').value = r.remark || '';
+      // 退费证明：回显已有图片（新选与标记删除状态重置）
+      newProofs.forEach(n => URL.revokeObjectURL(n.url));
+      newProofs = [];
+      removedPhotoIds = [];
+      existingPhotos = (r.photos || []).map(p => ({ ...p }));
+      renderProofThumbs();
+      renderPayHint();
+      $('refundModal').style.display = 'flex';
+      setTimeout(() => $('refundStudent').focus(), 50);
+    }
+
+    async function delRefund(r) {
+      if (!confirm(`确定删除 ${r.refund_date} ${r.student_name} 的退费记录吗？`)) return;
+      try {
+        const res = await apiFetch(`/api/refunds/${r.id}`, { method: 'DELETE' });
+        if (!res) return;
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || '删除失败', 'error'); return; }
+        showToast('已删除', 'success');
+        if (editingId === r.id) closeRefundModal();
+        await loadRecent();
+        if ($('tab-history').style.display !== 'none') await loadHistory();
+      } catch (err) {
+        showToast('网络错误，删除失败', 'error');
+      }
+    }
+
+    // ---------- 记录查询 ----------
+    async function loadHistory() {
+      const params = new URLSearchParams({
+        start: $('startDate').value || '',
+        end: $('endDate').value || '',
+        keyword: $('keyword').value.trim(),
+      });
+      try {
+        const res = await apiFetch('/api/refunds?' + params.toString());
+        if (!res) return;
+        const data = await res.json();
+        renderHistory(data);
+        lastQuery = { params: params.toString(), count: data.length };
+      } catch (err) {
+        showToast('查询失败', 'error');
+      }
+    }
+
+    // 导出 Excel：严格使用最近一次“查询”的条件，导出内容与页面查询结果逐条一致
+    async function exportHistory() {
+      if (!lastQuery) { showToast('请先点击“查询”获取记录', 'error'); return; }
+      $('exportBtn').disabled = true;
+      try {
+        const res = await fetch('/api/refunds/export?' + lastQuery.params);
+        if (!res.ok) { showToast('导出失败', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const end = new URLSearchParams(lastQuery.params).get('end');
+        a.download = '退费记录_' + (end || new Date().toISOString().slice(0, 10)).replace(/-/g, '') + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        showToast(`已导出查询到的 ${lastQuery.count} 条记录`, 'success');
+      } catch (err) {
+        showToast('网络错误，导出失败', 'error');
+      } finally {
+        $('exportBtn').disabled = false;
+      }
+    }
+
+    function renderHistory(refunds) {
+      const tbody = $('hisTbody');
+      tbody.innerHTML = '';
+      $('hisEmpty').style.display = refunds.length ? 'none' : 'flex';
+      refunds.forEach(r => tbody.appendChild(refundRow(r, false)));
+      const total = refunds.reduce((s, r) => s + (r.amount || 0), 0);
+      const students = new Set(refunds.map(r => r.student_id)).size;
+      $('hisSummary').innerHTML = refunds.length ? `
+        <div class="sum-chip">记录 <b>${refunds.length}</b> 条</div>
+        <div class="sum-chip sum-refund">退费总额 <b>¥${total.toFixed(2)}</b></div>
+        <div class="sum-chip">涉及学生 <b>${students}</b> 人</div>` : '';
+    }
+
+    // ---------- 退费证明 ----------
+    const PROOF_MAX = 5;
+    const PROOF_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const PROOF_MAX_SIZE = 5 * 1024 * 1024;
+
+    function keptPhotoCount() {
+      return existingPhotos.length - removedPhotoIds.length + newProofs.length;
+    }
+
+    function addProofFiles(files) {
+      const room = PROOF_MAX - keptPhotoCount();
+      if (room <= 0) {
+        showToast(`退费证明最多 ${PROOF_MAX} 张`, 'error');
+        return;
+      }
+      if (files.length > room) {
+        showToast(`最多还能添加 ${room} 张（超出部分已忽略）`, 'warning');
+        files = files.slice(0, room);
+      }
+      for (const f of files) {
+        const ext = '.' + (f.name.split('.').pop() || '').toLowerCase();
+        if (!PROOF_EXTS.includes(ext)) {
+          showToast(`不支持的格式：${f.name}（仅 jpg/png/gif/webp）`, 'error');
+          continue;
+        }
+        if (f.size > PROOF_MAX_SIZE) {
+          showToast(`图片过大：${f.name}（单张不超过 5MB）`, 'error');
+          continue;
+        }
+        newProofs.push({ file: f, url: URL.createObjectURL(f) });
+      }
+      renderProofThumbs();
+    }
+
+    function removeNewProof(idx) {
+      URL.revokeObjectURL(newProofs[idx].url);
+      newProofs.splice(idx, 1);
+      renderProofThumbs();
+    }
+
+    function removeExistingProof(photoId) {
+      const i = existingPhotos.findIndex(p => p.id === photoId);
+      if (i >= 0) existingPhotos.splice(i, 1);
+      if (!removedPhotoIds.includes(photoId)) removedPhotoIds.push(photoId);
+      renderProofThumbs();
+    }
+
+    function renderProofThumbs() {
+      const box = $('proofThumbs');
+      const kept = existingPhotos.map(p => `
+        <div class="proof-thumb-item" title="${escapeHtml(p.original_name || '')}">
+          <img src="/uploads/refund-photos/${encodeURIComponent(p.filename)}" alt="">
+          <span class="proof-rm" data-rm-old="${p.id}" title="移除">&times;</span>
+        </div>`).join('');
+      const news = newProofs.map((n, i) => `
+        <div class="proof-thumb-item" title="${escapeHtml(n.file.name)}">
+          <img src="${n.url}" alt="">
+          <span class="proof-rm" data-rm-new="${i}" title="移除">&times;</span>
+        </div>`).join('');
+      box.innerHTML = kept + news;
+      $('proofAddBtn').style.display = keptPhotoCount() >= PROOF_MAX ? 'none' : '';
+    }
+
+    // 列表缩略图点击 → 下载原图（隐藏a标签触发，不新开页面）
+    function onProofClick(e) {
+      const img = e.target.closest('img.proof-thumb');
+      if (!img || !PERMS.download) return;
+      const a = document.createElement('a');
+      a.href = `/uploads/refund-photos/${img.dataset.file}?download=1`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function proofCellHtml(r) {
+      if (r.photos && r.photos.length) {
+        return `<div class="td-proofs">` + r.photos.map(ph =>
+          `<img class="proof-thumb" data-file="${encodeURIComponent(ph.filename)}"
+                src="/uploads/refund-photos/${encodeURIComponent(ph.filename)}"
+                title="${PERMS.download ? '点击下载：' + escapeHtml(ph.original_name || '退费证明') : '退费证明（只读角色不可下载）'}">`
+        ).join('') + (r.photos.length > 1 ? `<span class="proof-count">${r.photos.length}张</span>` : '') + `</div>`;
+      }
+      return '<span class="td-muted">—</span>';
+    }
+
+    async function syncProofs(refundId) {
+      // 1) 删除编辑时标记移除的已有图片
+      for (const pid of removedPhotoIds) {
+        try { await apiFetch(`/api/refund-photos/${pid}`, { method: 'DELETE' }); } catch (e) { /* 忽略单张失败 */ }
+      }
+      // 2) 上传新选图片
+      if (newProofs.length) {
+        const fd = new FormData();
+        newProofs.forEach(n => fd.append('photos', n.file));
+        try {
+          const res = await fetch(`/api/refunds/${refundId}/photos`, { method: 'POST', body: fd });
+          if (!res.ok) {
+            const r = await res.json().catch(() => ({}));
+            showToast(r.error || '退费证明上传失败，记录已保存', 'error');
+            return;
+          }
+        } catch (err) {
+          showToast('网络错误，退费证明上传失败，记录已保存', 'error');
+          return;
+        }
+      }
+    }
+
+    function clearProofState() {
+      newProofs.forEach(n => URL.revokeObjectURL(n.url));
+      newProofs = [];
+      existingPhotos = [];
+      removedPhotoIds = [];
+      renderProofThumbs();
+    }
+
+    // ---------- 通用 ----------
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = 'success') {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast toast-show ' + (type === 'error' ? 'toast-error' : 'toast-success');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 2600);
+    }
+  </script>
+</body>
+</html>

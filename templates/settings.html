@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统设置 - 培训机构管理系统</title>
+  <link rel="stylesheet" href="/static/css/common.css">
+  <link rel="stylesheet" href="/static/css/settings.css">
+</head>
+<body>
+  {% include "navbar.html" %}
+  <div class="container">
+    <h2 style="margin-bottom:24px;font-size:22px">系统设置</h2>
+
+    <div class="settings-tabs">
+      {% if super_user %}
+      <div class="settings-tab active" data-tab="users" onclick="switchTab('users')">用户管理</div>
+      <div class="settings-tab" data-tab="general" onclick="switchTab('general')">基本设置</div>
+      <div class="settings-tab" data-tab="backup" onclick="switchTab('backup')">数据备份</div>
+      {% endif %}
+      {% if can('settings.logs') %}
+      <div class="settings-tab {% if not super_user %}active{% endif %}" data-tab="logs" onclick="switchTab('logs')">操作日志</div>
+      {% endif %}
+      <div class="settings-tab {% if not super_user and not can('settings.logs') %}active{% endif %}" data-tab="password" onclick="switchTab('password')">修改密码</div>
+    </div>
+
+    {% if super_user %}
+    <div class="settings-panel active" id="panel-users">
+      <div class="settings-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3>用户列表</h3>
+          <button class="btn btn-primary btn-sm" onclick="openUserModal()">新增用户</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>ID</th><th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>最后登录</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>{{ u.username }}</td>
+              <td>{{ u.display_name or '-' }}</td>
+              <td>
+                <span class="role-tag role-{{ u.role }}">{{ role_name(u.role) }}</span>
+                {% if u.role in ('admin', 'principal') %}<span class="role-unique" title="全系统有且只能有一个">唯一</span>{% endif %}
+              </td>
+              <td>
+                {% if u.status == '启用' %}
+                <span class="tag tag-success">启用</span>
+                {% else %}
+                <span class="tag tag-danger">禁用</span>
+                {% endif %}
+              </td>
+              <td>{{ u.last_login or '从未登录' }}</td>
+              <td>
+                <button class="btn btn-default btn-sm" onclick="openUserModal({{ u.id }})">编辑</button>
+                {% if u.username != 'admin' and u.id != session.get('user_id') and u.role not in ('admin', 'principal') %}
+                <button class="btn btn-danger btn-sm" onclick="delUser({{ u.id }}, '{{ u.username }}')">删除</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 基本设置 -->
+    {% if super_user %}
+    <div class="settings-panel" id="panel-general">
+      <div class="settings-card">
+        <h3>机构信息</h3>
+        <div class="form-group">
+          <label class="form-label">机构名称</label>
+          <input type="text" id="orgName" class="form-input" value="{{ settings.get('org_name', '') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">联系电话</label>
+          <input type="text" id="orgPhone" class="form-input" value="{{ settings.get('org_phone', '') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">地址</label>
+          <input type="text" id="orgAddress" class="form-input" value="{{ settings.get('org_address', '') }}">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+      </div>
+    </div>
+
+    <!-- 数据备份 -->
+    <div class="settings-panel" id="panel-backup">
+      <div class="settings-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <h3>数据库备份</h3>
+          <button class="btn btn-success btn-sm" id="backupBtn" onclick="doBackup()">立即备份</button>
+        </div>
+        <p style="margin:0 0 14px;font-size:12.5px;color:var(--text-muted)">
+          备份文件保存在服务器 <code>backups/data/</code> 目录（与代码备份分开存放）。
+          「恢复」将用所选备份<strong>覆盖当前全部数据</strong>，操作不可直接撤销——恢复前系统会先把当前数据自动备份一份，可用于撤销恢复。
+        </p>
+        <div id="backupList"></div>
+      </div>
+    </div>
+
+    {% endif %}
+
+    <!-- 操作日志（管理员 / 校长 / 教务） -->
+    {% if can('settings.logs') %}
+    <div class="settings-panel {% if not super_user %}active{% endif %}" id="panel-logs">
+      <div class="settings-card">
+        <h3>操作日志</h3>
+        <div class="refunds-toolbar" style="margin-bottom:16px">
+          <input type="date" id="logStart" class="form-input" style="width:auto">
+          <input type="date" id="logEnd" class="form-input" style="width:auto">
+          <input type="text" id="logUser" class="form-input" placeholder="用户名" style="width:120px">
+          <input type="text" id="logAction" class="form-input" placeholder="操作" style="width:120px">
+          <button class="btn btn-primary btn-sm" onclick="loadLogs()">查询</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>时间</th><th>用户</th><th>操作</th><th>模块</th><th>详情</th></tr>
+          </thead>
+          <tbody id="logsBody">
+            <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">请点击查询查看日志</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- 修改密码 -->
+    <div class="settings-panel" id="panel-password">
+      <div class="settings-card" style="max-width:480px">
+        <h3>修改密码</h3>
+        <div class="form-group">
+          <label class="form-label">原密码 <span class="req">*</span></label>
+          <input type="password" id="oldPwd" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">新密码 <span class="req">*</span></label>
+          <input type="password" id="newPwd" class="form-input" placeholder="至少6个字符" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">确认新密码 <span class="req">*</span></label>
+          <input type="password" id="confirmPwd" class="form-input" required>
+        </div>
+        <button class="btn btn-primary" id="changePwdBtn" onclick="changePassword()">修改密码</button>
+      </div>
+    </div>
+  </div>
+
+  {% if super_user %}
+  <!-- 用户编辑模态框 -->
+  <div id="userModal" style="display:none">
+    <div class="modal-overlay show">
+      <div class="modal-box" style="max-width:480px">
+        <div class="modal-header">
+          <span class="modal-title" id="userModalTitle">新增用户</span>
+          <button class="modal-close" onclick="closeUserModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="userForm">
+            <input type="hidden" id="userId">
+            <div class="form-group">
+              <label class="form-label">用户名 <span class="req">*</span></label>
+              <input type="text" id="userUsername" class="form-input" required>
+              <small style="color:var(--text-muted)">编辑时不可修改用户名</small>
+            </div>
+            <div class="form-group">
+              <label class="form-label">显示名</label>
+              <input type="text" id="userDisplayName" class="form-input">
+            </div>
+            <div class="form-group">
+              <label class="form-label">角色</label>
+              <select id="userRole" class="form-select">
+                {% for key, label in ROLES.items() %}
+                <option value="{{ key }}" data-unique="{{ 1 if key in ('admin', 'principal') else 0 }}">{{ label }}{% if key in ('admin', 'principal') %}（唯一）{% endif %}</option>
+                {% endfor %}
+              </select>
+              <small style="color:var(--text-muted)">管理员、校长全系统各只能有一个；二者均可查看并管理全部功能</small>
+            </div>
+            <div class="form-group">
+              <label class="form-label">密码</label>
+              <input type="password" id="userPassword" class="form-input" placeholder="新增时必填，编辑时留空不修改">
+            </div>
+            <div class="form-group">
+              <label class="form-label">状态</label>
+              <select id="userStatus" class="form-select">
+                <option value="启用">启用</option>
+                <option value="禁用">禁用</option>
+              </select>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-default" onclick="closeUserModal()">取消</button>
+          <button class="btn btn-primary" id="saveUserBtn" onclick="saveUser()">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <script src="/static/js/common.js"></script>
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".settings-panel").forEach(p => p.classList.remove("active"));
+      document.querySelector(`[data-tab="${tab}"]`).classList.add("active");
+      document.getElementById(`panel-${tab}`).classList.add("active");
+      // 切到数据备份页时自动拉取 backups/data/ 最新备份列表
+      if (tab === "backup") loadBackups();
+    }
+
+    // URL 参数切换 Tab
+    const params = new URLSearchParams(location.search);
+    if (params.get("tab")) switchTab(params.get("tab"));
+
+    {% if super_user %}
+    // 当前登录用户 id（用于禁止修改自己的角色/状态）
+    const currentUserId = {{ session.get('user_id') | tojson }};
+
+    // 唯一角色（管理员 / 校长）已被他人占用时，禁用对应选项
+    function syncUniqueRoleOptions(allowRoles) {
+      const sel = document.getElementById("userRole");
+      [...sel.options].forEach(opt => {
+        if (opt.dataset.unique === "1" && !allowRoles.includes(opt.value)) {
+          opt.disabled = true;
+          opt.textContent = opt.textContent.replace(/（已存在）$/, "") + "（已存在）";
+        } else {
+          opt.disabled = false;
+          opt.textContent = opt.textContent.replace(/（已存在）$/, "");
+        }
+      });
+    }
+
+    // 用户管理
+    async function openUserModal(id) {
+      document.getElementById("userForm").reset();
+      document.getElementById("userId").value = "";
+      document.getElementById("userUsername").disabled = false;
+      document.getElementById("userModalTitle").textContent = "新增用户";
+      // 新增时：已被占用的唯一角色不可选
+      syncUniqueRoleOptions([]);
+      if (id) {
+        const res = await apiFetch("/api/users");
+        if (!res) return;
+        const users = await res.json();
+        // 宽松比较：兼容模板传字符串 id 与 API 返回数字 id
+        const u = users.find(x => Number(x.id) === Number(id));
+        if (u) {
+          document.getElementById("userModalTitle").textContent = "编辑用户";
+          document.getElementById("userId").value = u.id;
+          document.getElementById("userUsername").value = u.username;
+          document.getElementById("userUsername").disabled = true;
+          document.getElementById("userDisplayName").value = u.display_name || "";
+          document.getElementById("userRole").value = u.role;
+          document.getElementById("userStatus").value = u.status;
+          // 编辑时：该用户自己已占用的唯一角色保持可选
+          syncUniqueRoleOptions([u.role]);
+          // 不能修改自己的角色或状态，避免把唯一管理员/校长降级
+          const isSelf = Number(u.id) === Number(currentUserId);
+          document.getElementById("userRole").disabled = isSelf;
+          document.getElementById("userStatus").disabled = isSelf;
+        }
+      }
+      document.getElementById("userModal").style.display = "";
+    }
+
+    function closeUserModal() {
+      document.getElementById("userModal").style.display = "none";
+    }
+
+    async function saveUser() {
+      await withLock(document.getElementById("saveUserBtn"), async () => {
+        const id = document.getElementById("userId").value;
+        const username = document.getElementById("userUsername").value.trim();
+        if (!username) { Toast.warning("请输入用户名"); return; }
+        const body = {
+          username,
+          display_name: document.getElementById("userDisplayName").value.trim(),
+          role: document.getElementById("userRole").value,
+          status: document.getElementById("userStatus").value,
+        };
+        const pwd = document.getElementById("userPassword").value;
+        if (pwd) body.password = pwd;
+        if (!id && !pwd) { Toast.warning("新增用户必须设置密码"); return; }
+        const res = await apiFetch(id ? `/api/users/${id}` : "/api/users", {
+          method: id ? "PUT" : "POST",
+          body,
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (res.ok) {
+          Toast.success(data.message || "保存成功");
+          closeUserModal();
+          setTimeout(() => location.reload(), 800);
+        } else {
+          Toast.error(data.error || "保存失败");
+        }
+      });
+    }
+
+    async function delUser(id, name) {
+      const ok = await Modal.confirm(`确认删除用户 "${name}"？`);
+      if (!ok) return;
+      const res = await apiFetch(`/api/users/${id}`, { method: "DELETE" });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) {
+        Toast.success("删除成功");
+        setTimeout(() => location.reload(), 800);
+      } else {
+        Toast.error(data.error || "删除失败");
+      }
+    }
+
+    // 基本设置
+    async function saveSettings() {
+      const body = {
+        org_name: document.getElementById("orgName").value,
+        org_phone: document.getElementById("orgPhone").value,
+        org_address: document.getElementById("orgAddress").value,
+      };
+      const res = await apiFetch("/api/settings", { method: "PUT", body });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) Toast.success(data.message || "保存成功");
+      else Toast.error(data.error || "保存失败");
+    }
+
+    // 数据备份
+    // 拉取 backups/data/ 最新备份列表并渲染（切到本 Tab 或操作完成后自动刷新）
+    let _backupItems = [];   // 缓存当前列表，按钮按索引取文件名，避免文件名特殊字符破坏 HTML 属性
+    async function loadBackups() {
+      const res = await apiFetch("/api/settings/backups");
+      if (!res) return;
+      const data = await res.json();
+      _backupItems = Array.isArray(data) ? data : [];
+      const box = document.getElementById("backupList");
+      if (_backupItems.length === 0) {
+        box.innerHTML = `<div class="empty-state"><div class="empty-state-text">暂无备份文件</div></div>`;
+        return;
+      }
+      box.innerHTML = _backupItems.map((b, i) => `
+        <div class="backup-item">
+          <div class="backup-info">
+            <div class="backup-filename">${Modal.escape(b.filename)}</div>
+            <div class="backup-meta">${Modal.escape(b.created_at)} / ${(b.size / 1024).toFixed(1)} KB</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" data-act="restore" data-idx="${i}">恢复</button>
+            <button class="btn btn-ghost btn-sm" style="background:#fff;border:1px solid var(--border);color:var(--text-secondary)" data-act="download" data-idx="${i}">下载</button>
+            <button class="btn btn-danger btn-sm" data-act="delete" data-idx="${i}">删除</button>
+          </div>
+        </div>`).join("");
+    }
+
+    // 事件委托：备份列表按钮统一分发（按索引从缓存取文件名，URL 用 encodeURIComponent 编码）
+    document.getElementById("backupList").addEventListener("click", e => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      const item = _backupItems[btn.dataset.idx];
+      if (!item) return;
+      if (btn.dataset.act === "restore") restoreBackup(item.filename);
+      else if (btn.dataset.act === "download") downloadBackup(item.filename);
+      else if (btn.dataset.act === "delete") delBackup(item.filename);
+    });
+
+    async function doBackup() {
+      await withLock(document.getElementById("backupBtn"), async () => {
+        const res = await apiFetch("/api/settings/backup", { method: "POST" });
+        if (!res) return;
+        const data = await res.json();
+        if (res.ok) {
+          Toast.success(data.message || "备份成功");
+          loadBackups();
+        } else {
+          Toast.error(data.error || "备份失败");
+        }
+      });
+    }
+
+    async function delBackup(filename) {
+      const ok = await Modal.confirm(`确认删除备份文件 ${filename}？`);
+      if (!ok) return;
+      const res = await apiFetch(`/api/settings/backups/${encodeURIComponent(filename)}`, { method: "DELETE" });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) {
+        Toast.success("删除成功");
+        loadBackups();
+      } else {
+        Toast.error(data.error || "删除失败");
+      }
+    }
+
+    // 下载备份文件到本机（隐藏a标签触发，不新开页面，避免被 IDE 内置预览接管弹窗）
+    function downloadBackup(filename) {
+      const a = document.createElement("a");
+      a.href = `/api/settings/backups/${encodeURIComponent(filename)}/download`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // 恢复备份：二次确认，防止误操作
+    async function restoreBackup(filename) {
+      const ok = await Modal.confirm(
+        `确定要恢复备份「${filename}」吗？\n\n当前数据库的全部数据将被该备份覆盖。恢复前系统会自动把当前数据再备份一份，可用于撤销本次恢复。`
+      );
+      if (!ok) return;
+      const res = await apiFetch(`/api/settings/backups/${encodeURIComponent(filename)}/restore`, { method: "POST" });
+      if (!res) return;
+      const data = await res.json();
+      if (res.ok) {
+        Toast.success(data.message || "恢复成功，建议刷新页面重新登录");
+        setTimeout(() => location.reload(), 1600);
+      } else {
+        Toast.error(data.error || "恢复失败");
+      }
+    }
+
+    {% endif %}
+
+    {% if can('settings.logs') %}
+    // 操作日志（管理员 / 校长 / 教务）
+    async function loadLogs() {
+      const params = new URLSearchParams();
+      const s = document.getElementById("logStart").value;
+      const e = document.getElementById("logEnd").value;
+      const u = document.getElementById("logUser").value.trim();
+      const a = document.getElementById("logAction").value.trim();
+      if (s) params.set("start", s);
+      if (e) params.set("end", e);
+      if (u) params.set("username", u);
+      if (a) params.set("action", a);
+      const res = await apiFetch("/api/settings/operation-logs?" + params.toString());
+      if (!res) return;
+      const logs = await res.json();
+      const tbody = document.getElementById("logsBody");
+      if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">暂无日志记录</td></tr>';
+        return;
+      }
+      tbody.innerHTML = logs.map(l => `
+        <tr class="log-row">
+          <td>${escapeHtml(l.created_at)}</td>
+          <td>${escapeHtml(l.username)}</td>
+          <td class="log-action">${escapeHtml(l.action)}</td>
+          <td>${escapeHtml(l.module || "")}</td>
+          <td>${escapeHtml(l.detail || "")}</td>
+        </tr>
+      `).join("");
+    }
+    {% endif %}
+
+    // 修改密码
+    async function changePassword() {
+      await withLock(document.getElementById("changePwdBtn"), async () => {
+        const oldPwd = document.getElementById("oldPwd").value;
+        const newPwd = document.getElementById("newPwd").value;
+        const confirmPwd = document.getElementById("confirmPwd").value;
+        if (!oldPwd || !newPwd) { Toast.warning("请填写完整"); return; }
+        if (newPwd.length < 6) { Toast.warning("新密码至少 6 个字符"); return; }
+        if (newPwd !== confirmPwd) { Toast.warning("两次密码不一致"); return; }
+        const res = await apiFetch("/api/auth/change-password", {
+          method: "POST",
+          body: { old_password: oldPwd, new_password: newPwd },
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (res.ok) {
+          Toast.success("密码修改成功");
+          document.getElementById("oldPwd").value = "";
+          document.getElementById("newPwd").value = "";
+          document.getElementById("confirmPwd").value = "";
+        } else {
+          Toast.error(data.error || "修改失败");
+        }
+      });
+    }
+  </script>
+</body>
+</html>
