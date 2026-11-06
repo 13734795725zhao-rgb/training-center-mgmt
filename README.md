@@ -8,38 +8,25 @@
 
 **The admin system a small training centre actually needs — students, attendance, tuition, refunds, reports.**
 
-One Flask file. One SQLite database. No cloud, no build step, no monthly fee.
+Runs on one office computer. Your data stays in one file on that computer. No cloud, no monthly fee.
 
-[![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](#requirements)
-[![Flask](https://img.shields.io/badge/Flask-3.0%2B-000000?logo=flask&logoColor=white)](#requirements)
-[![SQLite](https://img.shields.io/badge/SQLite-single%20file-003B57?logo=sqlite&logoColor=white)](#data-model)
-[![Build](https://img.shields.io/badge/frontend%20build-none-brightgreen)](#why-one-file)
+[![Python](https://img.shields.io/badge/python-3.9%2B-3776AB)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Features](#features) · [Roles](#roles-and-permissions) · [Quick start](#quick-start) · [Data model](#data-model) · [Security](#security-notes)
+[Features](#features) · [Get started](#get-started) · [Who can do what](#who-can-do-what) · [Questions](#common-questions)
 
 </div>
 
 ---
 
 > [!CAUTION]
-> **Three things must be done before this touches real student data.**
+> **Do these three things before entering any real student data.**
 >
-> **1. Set `FLASK_SECRET_KEY`.** The code falls back to a hard-coded default for that variable. Left unset, every installation shares the same signing key and session cookies can be forged. Export a long random value before starting.
+> **1. Set `FLASK_SECRET_KEY`.** The code falls back to a default that is written into it. If you leave it, every installation shares the same key and a login could be forged. Set any long random string before starting.
 >
-> **2. Change the seeded passwords.** The first run creates two accounts — `admin` / `admin123` and `principal` / `principal123` — so a fresh install is usable offline. They are not passwords to leave on an office network.
+> **2. Change the starting passwords.** The first launch creates `admin` / `admin123` and `principal` / `principal123`. Those are not passwords to leave on an office network.
 >
-> **3. Never commit `students.db` or `uploads/`.** They contain minors' names, guardians' phone numbers, payment records and student photographs. Both are git-ignored in this repository and **no database ships with it** — a fresh clone creates an empty one on first run.
-
----
-
-## Why one file
-
-A training centre with two hundred students does not need a service mesh. It needs something a teacher can start on the office PC, back up by copying a file, and understand six months later when the original author has moved on.
-
-So the whole backend is `app.py` — 4,686 lines, no blueprints, no ORM, no migration framework beyond a small versioned schema step. Templates are server-rendered Jinja2 with plain CSS and vanilla JS: **no npm, no bundler, no node_modules**. Deployment is `pip install -r requirements.txt` and `python app.py`.
-
-The trade-off is honest: this is not a multi-tenant SaaS, and the file is long. In exchange, a non-developer can run and back it up, and there is no dependency tree to rot.
+> **3. Never upload the database or the photos.** `students.db` and `uploads/` hold students' names, parents' phone numbers, payment records and photographs of children. Both are excluded from this repository, and **no data ships with it** — an empty database is created on first start.
 
 ---
 
@@ -47,44 +34,42 @@ The trade-off is honest: this is not a multi-tenant SaaS, and the file is long. 
 
 | Module | What it does |
 |---|---|
-| **Student records** | Full student profile with an auto-generated student number, guardian contacts, enrolment history and status |
-| **Student résumé** | Per-student portfolio of awards, projects and milestones, editable by staff and teachers |
-| **Attendance** | Lesson-by-lesson attendance with per-student status and course roll-up |
-| **Courses and subjects** | Course catalogue with subject grouping, pricing and lesson counts |
-| **Teachers** | Teacher records, subject assignment and course ownership |
-| **Tuition payments** | Payment entry against an enrolment, with proof-photo attachment and balance tracking |
-| **Refunds** | Refund requests against a paid enrolment, with proof photo and approval trail |
-| **Lesson hours** | Remaining-lesson accounting per enrolment, decremented by attendance |
-| **Reports** | Enrolment, revenue and attendance statistics with date-range filtering |
-| **Excel import** | Bulk student import from `.xlsx` via `openpyxl`, with validation and a dry-run report |
-| **Audit log** | Every write operation recorded in `operation_logs` — who, what, when |
-| **Role-based permissions** | Four roles with per-action permission checks on the server, not just hidden buttons |
-| **Numbering rules** | Pluggable document numbers (student IDs, payment receipts) generated from the `counters` table |
-| **Mobile layout** | Responsive templates, usable on a phone at the front desk |
-
-Everything is server-enforced. Hiding a button is a convenience; the permission decorator is the actual boundary.
+| **Student records** | Each student's details, an automatically generated student number, parent contacts, class history and status |
+| **Student portfolio** | Awards, projects and milestones per student, editable by staff and teachers |
+| **Attendance** | Mark attendance lesson by lesson, per student, rolled up per course |
+| **Courses and subjects** | The course list with subject grouping, lesson counts and prices |
+| **Teachers** | Teacher records, the subjects they teach and the courses they run |
+| **Tuition payments** | Record a payment against a class, attach a photo of the receipt, and see the balance |
+| **Refunds** | Request a refund against a paid class, attach proof, keep the approval trail |
+| **Lesson hours** | How many lessons each student has left, reduced automatically by attendance |
+| **Reports** | Enrolment, income and attendance statistics, filtered by date range |
+| **Excel import** | Bring a student list in from a spreadsheet. It checks the file first and tells you which row is wrong |
+| **Activity log** | Every change is recorded — who changed it, what they changed, and when |
+| **Permissions** | Four roles, checked on the server, not just hidden in the page |
+| **Automatic numbering** | Student numbers and receipt numbers generated without duplicates |
+| **Works on a phone** | Pages adapt to a phone screen, for the front desk |
 
 ---
 
-## Roles and permissions
+## Who can do what
 
-| Role | Scope |
+| Role | What they can do |
 |---|---|
-| **admin** | Everything, including user accounts and system settings |
-| **principal** | Everything operational — students, courses, payments, refunds, reports; cannot delete the admin |
-| **staff** | Front-desk work: students, attendance, payments, refunds, résumés, subjects |
-| **teacher** | Read student records, take attendance, edit résumés, view own courses |
+| **Admin** | Everything, including user accounts and system settings |
+| **Principal** | All day-to-day work — students, courses, payments, refunds, reports. Cannot delete an admin |
+| **Front desk / staff** | Students, attendance, payments, refunds, portfolios, subjects |
+| **Teacher** | View students, take attendance, edit portfolios, see their own courses |
 
-Permission sets are declared as constants at the top of `app.py` (`STUDENT_WRITE_ROLES`, `PAYMENT_WRITE_ROLES`, `RESUME_WRITE_ROLES`, …). Every route sits behind `@login_required` and calls a small predicate such as `can_write_student(role)` before mutating, so adding a role means editing one constant instead of hunting for scattered `if`s.
+Pages a role cannot use reject them even if the address is typed by hand.
 
 ---
 
-## Quick start
+## Requirements
 
-### Requirements
+- Python 3.9 or newer
+- Two packages: `flask` and `openpyxl`
 
-- Python 3.9+
-- `flask` and `openpyxl` — that is the entire dependency list
+## Get started
 
 ```bash
 git clone https://github.com/13734795725zhao-rgb/training-center-mgmt.git
@@ -92,97 +77,57 @@ cd training-center-mgmt
 
 pip install -r requirements.txt
 
-# REQUIRED: use your own signing key
-export FLASK_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"   # Linux/macOS
-# $env:FLASK_SECRET_KEY = "..."                                                             # PowerShell
+# required: use your own key
+export FLASK_SECRET_KEY="a-long-random-string-of-your-own"     # Linux / macOS
+# $env:FLASK_SECRET_KEY = "..."                                # PowerShell
 
 python app.py
 ```
 
-Open **http://127.0.0.1:5000/** and sign in.
+Open **http://127.0.0.1:5000/** and log in. The database is created automatically on first start — you do not need to set anything up.
 
-The database `students.db` is created on first run and the schema is applied automatically. Create the first administrator from `/settings` after logging in with the seeded account, or seed one directly if you prefer.
+### For real day-to-day use
 
-### Production
-
-`app.py` runs Flask's development server, which prints that warning for a reason. Behind a real deployment put it under a WSGI server and a TLS-terminating proxy:
+`python app.py` uses a development mode that is fine for trying the system out. To let colleagues use it, start it properly:
 
 ```bash
 pip install waitress
 waitress-serve --listen=0.0.0.0:8000 app:app
 ```
 
-Keep `students.db` and `uploads/` on backed-up storage — they are the entire system state.
+**Backing up is copying files.** `students.db` and the `uploads/` folder are the entire system — copy them to a USB stick or another drive and you have a backup.
 
 ---
 
-## Data model
+## Common questions
 
-SQLite, 18 tables, single file:
-
-```
-users ─┬─ operation_logs          students ─┬─ enrollments ─┬─ attendance
-       │                                    │               ├─ payments ── payment_photos
-       └─ system_settings                  ├─ guardians     ├─ refunds ─── refund_photos
-                                           ├─ photos        └─ resume_items
-courses ─── subjects                       └─ (student_no from counters)
-teachers ─── courses
-```
-
-| Table | Holds |
+| Problem | What to do |
 |---|---|
-| `students` / `guardians` | Student profile and family contacts |
-| `enrollments` | Student × course, with purchased lesson count and balance |
-| `attendance` | Per-lesson, per-student status |
-| `payments` / `refunds` | Money in and out, with proof images |
-| `courses` / `subjects` / `teachers` | The catalogue |
-| `resume_items` | Student portfolio entries |
-| `operation_logs` | Append-only audit trail |
-| `counters` | Document numbering sequences |
-| `system_settings` | Editable instance configuration |
-
-**Deleting a student is a hard delete of everything attached to them** — guardians, attendance, résumé items, photos, attachments, enrolments, and every payment and refund with its proof images. Nothing is soft-deleted; no financial row survives. That route is restricted to `admin` and `principal` for exactly this reason, and the audit log records the deletion.
+| A colleague cannot open it | Allow port 5000 (or 8000) through the firewall on your computer, and have them use your computer's network address |
+| The admin password is forgotten | Another admin resets it under **User management**. If all admins are locked out, the database has to be edited directly |
+| The Excel import complains | Read the message — it names the row and the column that is wrong. Usually a date or phone number is stored as a number |
+| I want to move to another computer | Copy the whole folder, including `students.db` and `uploads/` |
+| A student was deleted by mistake | That cannot be undone — their attendance, payments and refunds go with them. Check the activity log to see who did it and when |
+| I want to start over | Stop the program, delete `students.db` and `uploads/`, and start it again |
 
 ---
 
-## Security notes
+## Good to know
 
-- **`FLASK_SECRET_KEY`** — set it. The fallback value in `app.py` is a convenience for a first local run, not a secret.
-- **`students.db` and `uploads/`** — personal data of minors. Git-ignored here, never committed, never shipped. If you fork this for your own centre, keep it that way and back up the file rather than the repository.
-- **Passwords** are hashed with `werkzeug.security.generate_password_hash` (Werkzeug's default scrypt/PBKDF2), never stored in plain text.
-- **Audit trail** — `operation_logs` records every write with the acting user, so a mistaken edit is traceable.
-- **Intranet by default** — this is designed for an office LAN. If you expose it to the internet, put TLS in front of it and change the default port.
-
----
-
-## Limitations
-
-1. **Chinese-first UI.** Interface, templates, seed data and documentation are in Chinese. The code and this README are in English.
-2. **Single-tenant, single-file.** One centre per deployment; no multi-branch consolidation.
-3. **`app.py` is long.** 4,686 lines in one module is a deliberate trade for deployability, not an accident — but it does make `grep` your primary navigation tool.
-4. **No automated test suite beyond `test_api.py`.** A 61-line API smoke script covers the auth and student endpoints; the rest is verified by hand.
+1. **The interface is in Chinese**, and so is the data.
+2. **One copy per centre.** If you run several branches, give each its own copy rather than sharing one.
+3. **Change the passwords and set the key before anyone else touches it.**
+4. **Built for a local network.** Putting it on the public internet needs HTTPS and stricter access control first.
+5. **Deleting a student deletes everything about them** — including their payment and refund records. Only admin and principal can do it, and it cannot be undone.
 
 ---
 
-## Documentation
+## More
 
 | Document | Contents |
 |---|---|
-| [`docs/PRD.zh-CN.md`](docs/PRD.zh-CN.md) | Product requirements — module-by-module specs, numbering rules, the v3.4 permission model |
-| [`docs/TECHNICAL-DESIGN.zh-CN.md`](docs/TECHNICAL-DESIGN.zh-CN.md) | Technical design — architecture, 18-table schema, auth, audit, cascade rules, migration |
-
----
-
-## Contributing
-
-Issues and pull requests are welcome.
-
-- Never commit `students.db`, `uploads/` or `backups/`.
-- Permission checks belong in the role constants plus the decorator, not in a template's `{% if %}`.
-- Keep the dependency list at two packages. A plugin system is not on the roadmap.
-- If you add a schema change, bump the schema version and add the migration step — do not require a manual `ALTER TABLE`.
-
----
+| [`docs/PRD.zh-CN.md`](docs/PRD.zh-CN.md) | Full feature description, numbering rules, permission model (Chinese) |
+| [`docs/TECHNICAL-DESIGN.zh-CN.md`](docs/TECHNICAL-DESIGN.zh-CN.md) | Technical design (Chinese) |
 
 ## License
 
